@@ -6,6 +6,7 @@ Reference documentation of Kendar DLNA. The reference pages (marked **ref**) are
 
 | Document | Kind | Contents |
 |---|---|---|
+| [getting-started.md](getting-started.md) | howto | Illustrated first-run tour with screenshots: sign in, browse, play, queue, playlists, admin pages |
 | [features.md](features.md) | ref | Functional overview by area: library and scanning, `settings.json` field reference, virtual containers, playlists, search, artwork, formats matrix, transcoding/prefetch/cache, MIDI and SoundFont, web UI walkthrough, security, known limitations |
 | [configuration.md](configuration.md) | ref | Complete `config.json` reference (keys, defaults, validation), `clients` profiles, environment/system-property overrides, relative-path rules, logging, config and data directory layout |
 | [rest-api.md](rest-api.md) | ref | Admin REST API under `/api`: session/CSRF/throttling model, error model, every endpoint with schemas and status codes, open endpoints (`/health`, `/stream`, `/art`), curl walkthrough |

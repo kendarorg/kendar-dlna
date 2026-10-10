@@ -1,5 +1,28 @@
 # Kendar DLNA
 
+<p align="center">
+  <img src="docs/screenshots/hero.png" alt="Kendar DLNA: a web player on the desktop and on the phone" width="100%">
+</p>
+
+**Your music collection, everywhere in the house.** Point Kendar DLNA at a folder of music and play it from your
+TV, your hi-fi, your phone or any browser. No cloud, no subscription, no database to set up.
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/05-albums.png" alt="Albums"><br><b>Browse by album, artist or folder</b><br>Cover art, search and instant play.</td>
+    <td width="33%"><img src="docs/screenshots/16-fullscreen.png" alt="Full-screen player"><br><b>A real player in your browser</b><br>Queue, favorites, playlists, full-screen mode.</td>
+    <td width="33%"><img src="docs/screenshots/13-playing.png" alt="Playing"><br><b>Works with your speakers and TV</b><br>Shows up in VLC, Kodi, BubbleUPnP and other DLNA apps.</td>
+  </tr>
+</table>
+
+New here? Follow the [illustrated tour](docs/getting-started.md), or jump to the
+[quick start](#quick-start-with-docker-compose) (three commands with Docker).
+
+---
+
+## Under the hood
+
+
 A UPnP/DLNA **music server** in pure Java 25: browse a music directory tree from any DLNA renderer or control point,
 with per-directory sorting, "Random N", "Recently added" and Albums/Artists/Genres/Titles/Composers virtual containers, server-side playlists,
 search, MP3 transcoding of formats the renderer cannot play, MIDI rendering, and an admin web UI. One HTTP port, no
@@ -11,6 +34,7 @@ database, no native libraries. The design is in `plan.md`.
 * Out of scope: authentication on the DLNA side, gapless playback, client queues, filesystem watching.
 
 ## Documentation
+
 
 Reference documentation (features, `config.json`, REST API, DLNA/UPnP behaviour, transcoding, client compatibility) is
 indexed in [`docs/README.md`](docs/README.md).

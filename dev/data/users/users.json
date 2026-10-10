@@ -1,0 +1,16 @@
+{
+  "version" : 1,
+  "users" : [ {
+    "id" : "350964ef-4b94-4e49-8090-d5af1dc7baca",
+    "username" : "admin",
+    "displayName" : "admin",
+    "role" : "admin",
+    "passwordHash" : "pbkdf2-sha256$310000$sH/USz70eH/wD2PYmoAZmw==$9khFkalZAp/W2aasjMGrC+zIsZqdVcINJXLZma8+iII=",
+    "mustChange" : false,
+    "allowedRoots" : [ ],
+    "downloadAllowed" : true,
+    "enabled" : true,
+    "createdAt" : "2026-10-09T14:30:07.822152500Z",
+    "lastLogin" : "2026-10-10T07:40:05.245079700Z"
+  } ]
+}

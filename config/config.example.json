@@ -1,0 +1,54 @@
+{
+  "library": {
+    "roots": { "Music": "/music" },
+    "playlistsDir": "/playlists",
+    "dataDir": "/data"
+  },
+  "network": {
+    "advertiseAddress": null,
+    "port": 8200,
+    "lanCidrs": [],
+    "trustedProxies": []
+  },
+  "server": {
+    "friendlyName": "Kendar DLNA"
+  },
+  "random": {
+    "ttlMinutes": 30
+  },
+  "views": {
+    "bucketThreshold": 500
+  },
+  "scan": {
+    "cron": "0 */12 * * *",
+    "catchUpThresholdHours": 12
+  },
+  "transcode": {
+    "enabled": true,
+    "bitrateKbps": 320,
+    "prefetch": true,
+    "prefetchJobs": 1,
+    "cacheMaxMb": 2048,
+    "cacheTtlHours": 336,
+    "soundFontPath": null,
+    "midiSilenceThreshold": 16,
+    "midiMaxTailSeconds": 10
+  },
+  "clients": {
+    "builtins": true,
+    "profilesFile": null,
+    "profiles": [
+      {
+        "id": "living-room-tv",
+        "description": "example: a TV that plays MP3 and WAV only and wants a single res",
+        "match": { "userAgentRegex": "MyTV", "ipCidrs": ["192.168.1.40"] },
+        "nativeFormats": ["MP3", "WAV"],
+        "resOrder": "TRANSCODED_FIRST",
+        "transcodeTarget": "MP3",
+        "bitrateKbps": 256,
+        "quirks": ["SINGLE_RES"]
+      }
+    ],
+    "defaultProfile": { "nativeFormats": ["MP3"] }
+  }
+}

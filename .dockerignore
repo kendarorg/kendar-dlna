@@ -1,0 +1,16 @@
+.git
+.gitignore
+.gradle
+.idea
+.claude
+build
+out
+dev
+plans
+*.iml
+*.log
+Dockerfile
+docker-compose.yml
+.dockerignore
+stack.env
+README.md

@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Kendar DLNA (local)" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="org.kendar.dlna.platform.Main" />
+    <module name="kendar-dlna.main" />
+    <option name="VM_PARAMETERS" value="-Dkendar.configDir=$PROJECT_DIR$/dev/config -Dkendar.dataDir=$PROJECT_DIR$/dev/data -Dkendar.port=8200 -Dkendar.defaultRoot=$PROJECT_DIR$/dev/music -Djava.awt.headless=true -Dfile.encoding=UTF-8 --add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

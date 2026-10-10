@@ -1,0 +1,229 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.gradleup.shadow' version '9.2.2'
+}
+
+group = 'org.kendar'
+version = '0.1.0'
+
+// Bump here (and nowhere else) when moving to a newer JDK.
+def javaVersion = (findProperty('javaVersion') ?: '25') as int
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(javaVersion)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+def jettyVersion = '12.0.34'   // 12.0.x is the last line that still ships the ee8 (javax.servlet) module jUPnP needs
+def jupnpVersion = '3.0.5'
+def jacksonVersion = '2.18.2'
+def slf4jVersion = '2.0.17'
+
+// JAAD (net.sourceforge.jaad, AAC-LC decoder). The artifact registers an AudioFileReader through
+// META-INF/services, which makes every AudioSystem call consult it (and it throws NullPointerException on foreign
+// input), so the jar is repackaged without the service file and its SPI classes. Our MP4/ADTS demuxer and ALAC
+// decoder are own code; two JAAD classes (TNS, IQTable) are replaced by patched sources in src/main/java/net/sourceforge (see NOTICE).
+configurations {
+    jaadSource {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+
+def jaadVersion = '0.9.4'
+
+dependencies {
+    jaadSource "com.tianscar.javasound:jaad:${jaadVersion}"
+}
+
+tasks.register('jaadNoSpi', Jar) {
+    archiveBaseName = 'jaad-no-spi'
+    archiveVersion = jaadVersion
+    destinationDirectory = layout.buildDirectory.dir('jaad')
+    from({ zipTree(configurations.jaadSource.singleFile) }) {
+        exclude 'META-INF/services/**', 'META-INF/MANIFEST.MF', 'net/sourceforge/jaad/spi/**',
+                // replaced by the patched sources in src/main/java/net/sourceforge/jaad
+                'net/sourceforge/jaad/aac/tools/TNS.class', 'net/sourceforge/jaad/aac/syntax/IQTable.class'
+    }
+}
+
+dependencies {
+    implementation "org.jupnp:org.jupnp:${jupnpVersion}"
+    implementation "org.jupnp:org.jupnp.support:${jupnpVersion}"
+    implementation "org.eclipse.jetty:jetty-server:${jettyVersion}"
+    implementation "org.eclipse.jetty.ee8:jetty-ee8-servlet:${jettyVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+    implementation 'net.jthink:jaudiotagger:3.0.1'
+    // Transcoding spike (milestone 7): pure-Java codecs, versions pinned
+    implementation 'de.sciss:jump3r:1.0.5'
+    implementation 'com.googlecode.soundlibs:jlayer:1.0.1.4'
+    implementation 'org.jcraft:jorbis:0.0.17'
+    implementation 'org.jflac:jflac-codec:1.5.2'
+    implementation 'io.github.jaredmdobson:concentus:1.0.2'
+    // AAC decoding (JAAD), repackaged without its Java Sound service registration, see jaadNoSpi below
+    implementation files(tasks.named('jaadNoSpi'))
+    implementation "org.slf4j:slf4j-api:${slf4jVersion}"
+    runtimeOnly "org.slf4j:slf4j-jdk14:${slf4jVersion}"
+
+    // Java Sound SPI wrappers: surveyed in the spike only (direct codec APIs are preferred in production)
+    testImplementation 'com.googlecode.soundlibs:mp3spi:1.9.5.4'
+    testImplementation 'com.googlecode.soundlibs:vorbisspi:1.0.3.3'
+
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.assertj:assertj-core:3.27.6'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = javaVersion
+    options.encoding = 'UTF-8'
+    options.compilerArgs << '-Xlint:all' << '-Xlint:-serial'
+}
+
+application {
+    mainClass = 'org.kendar.dlna.platform.Main'
+    applicationDefaultJvmArgs = ['-Djava.awt.headless=true', '-Dfile.encoding=UTF-8',
+            '--add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED']
+}
+
+tasks.test {
+    useJUnitPlatform()
+    jvmArgs '-Djava.awt.headless=true', '--add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED'
+    systemProperty 'dlna.test.soundfont', (findProperty('soundFont') ?: '').toString()
+}
+
+tasks.shadowJar {
+    archiveBaseName = 'kendar-dlna'
+    archiveClassifier = ''
+    archiveVersion = ''
+    mergeServiceFiles()
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class', 'META-INF/versions/*/module-info.class'
+    manifest {
+        attributes 'Main-Class': 'org.kendar.dlna.platform.Main',
+                'Multi-Release': 'true',
+                'Add-Exports': 'java.desktop/com.sun.media.sound'
+    }
+}
+
+tasks.assemble { dependsOn tasks.shadowJar }
+
+// Build identification shown in the admin page (src/main/resources/build-info.properties).
+// GIT_COMMIT / BUILD_TIME override the values (Docker build args); otherwise git and the clock are used.
+def buildCommit = System.getenv('GIT_COMMIT') ?: {
+    try {
+        def p = ['git', 'rev-parse', '--short', 'HEAD'].execute(null, projectDir)
+        def out = p.text.trim()
+        p.waitFor()
+        (p.exitValue() == 0 && out) ? out : 'unknown'
+    } catch (Exception ignored) {
+        'unknown'
+    }
+}()
+def buildTimestamp = System.getenv('BUILD_TIME') ?: java.time.Instant.now().toString()
+
+tasks.processResources {
+    inputs.property('buildCommit', buildCommit)
+    inputs.property('buildTimestamp', buildTimestamp)
+    filesMatching('build-info.properties') {
+        expand(version: project.version.toString(), commit: buildCommit, buildTime: buildTimestamp)
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Manual integration tests (docs/integration-tests.md): a Java UPnP control point against a Testcontainers-managed
+// container (or an already running server). NOT part of `check`/`build`: run with `./gradlew integrationTest`.
+// ---------------------------------------------------------------------------------------------------------------
+def testcontainersVersion = '2.0.5'
+
+sourceSets {
+    integrationTest {
+        compileClasspath += sourceSets.main.output   // the tests reuse the jUPnP stream client/server setup of the app
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom implementation
+    integrationTestRuntimeOnly.extendsFrom runtimeOnly
+}
+
+dependencies {
+    integrationTestImplementation platform('org.junit:junit-bom:5.13.4')
+    integrationTestImplementation 'org.junit.jupiter:junit-jupiter'
+    integrationTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    integrationTestImplementation 'org.assertj:assertj-core:3.27.6'
+    integrationTestImplementation "org.testcontainers:testcontainers:${testcontainersVersion}"
+}
+
+tasks.register('integrationTest', Test) {
+    description = 'Runs the manual integration tests (Docker + Testcontainers, or KENDAR_IT_BASE_URL). Not part of check.'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    jvmArgs '-Djava.awt.headless=true', '--add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED'
+    systemProperty 'kendar.it.projectDir', projectDir.absolutePath
+    // -Dkendar.it.* given to Gradle reach the tests (environment variables KENDAR_IT_* are inherited as they are)
+    System.properties.each { k, v ->
+        if (k.toString().startsWith('kendar.it.')) {
+            systemProperty k.toString(), v
+        }
+    }
+    outputs.upToDateWhen { false }   // always run: the target is a live server
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = false
+        exceptionFormat = 'full'
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// JavaScript unit tests of the web app's pure modules (src/test/js, node:test). Skipped gracefully when Node.js is
+// missing; wired into `check` only when it is found. Point at a specific binary with -PnodeExecutable=... or NODE_EXE.
+// ---------------------------------------------------------------------------------------------------------------
+def findNode = {
+    for (c in [findProperty('nodeExecutable'), System.getenv('NODE_EXE'), 'node'].findAll { it }) {
+        try {
+            def p = [c.toString(), '--version'].execute()
+            p.consumeProcessOutput()
+            if (p.waitFor() == 0) {
+                return c.toString()
+            }
+        } catch (Exception ignored) {
+            // not runnable: try the next candidate
+        }
+    }
+    return null
+}
+
+tasks.register('jsTest', Exec) {
+    description = 'Runs the JavaScript unit tests (node --test src/test/js). Skipped when Node.js is not installed.'
+    group = 'verification'
+    inputs.dir('src/test/js')
+    inputs.dir('src/main/resources/web/js')
+    outputs.upToDateWhen { false }
+    workingDir = projectDir
+    onlyIf {
+        boolean found = findNode() != null
+        if (!found) {
+            logger.lifecycle('jsTest skipped: Node.js (node) was not found on the PATH; set -PnodeExecutable=<path> to enable it.')
+        }
+        found
+    }
+    doFirst {
+        def files = fileTree(dir: 'src/test/js', include: '**/*.test.js').files.collect { it.absolutePath }.sort()
+        commandLine([findNode(), '--test'] + files)
+    }
+}
+
+if (findNode() != null) {
+    tasks.named('check') { dependsOn tasks.named('jsTest') }
+}

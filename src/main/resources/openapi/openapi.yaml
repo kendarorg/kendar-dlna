@@ -1,0 +1,553 @@
+openapi: 3.0.3
+info:
+  title: Kendar DLNA REST API
+  version: "1.0"
+  description: |
+    Hand-written description of the web player API under `/api/v1` (plan: plan.player.md, reference: docs/rest-api.md).
+    This file covers the library query group (read-only, roles user and admin) and the public parts.
+    Every `/library` result is confined to the caller's allowed roots (admins: all roots); an explicit `path` or `scope`
+    outside them answers `403 forbidden_root`, even when the path does not exist. Every `/library` JSON response carries
+    `snapshot`, the catalog version: when it changes between two responses the library was rescanned or edited and
+    lists should be refreshed. Lists are paginated with `offset` and `limit` (default limit 50, maximum 200) and return
+    `total`. Paths are root-qualified (`Root/rel/path`).
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /openapi.yaml:
+    get:
+      summary: This description
+      security: []
+      responses:
+        "200":
+          description: The OpenAPI document
+          content:
+            application/yaml: {}
+  /library/roots:
+    get:
+      tags: [library]
+      summary: The caller's allowed roots (entry points of the folder browser)
+      responses:
+        "200":
+          description: Roots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot: { $ref: "#/components/schemas/Snapshot" }
+                  roots:
+                    type: array
+                    items: { $ref: "#/components/schemas/FolderRef" }
+        "401": { $ref: "#/components/responses/Error" }
+  /library/folders:
+    get:
+      tags: [library]
+      summary: A directory's children in settings.json order, with the album overlay, art refs and per-directory Random N and views
+      description: Alias `/library/folders/contents`.
+      parameters:
+        - { $ref: "#/components/parameters/PathRequired" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200":
+          description: The directory page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Folder" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /library/albums:
+    get:
+      tags: [library]
+      summary: Library-wide albums over the caller's roots (album artist and album title grouping), by title
+      parameters:
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200": { $ref: "#/components/responses/GroupPage" }
+  /library/artists:
+    get:
+      tags: [library]
+      summary: Library-wide artists (album artist, else track artist; multi-value split), by name
+      parameters:
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200": { $ref: "#/components/responses/GroupPage" }
+  /library/genres:
+    get:
+      tags: [library]
+      summary: Library-wide genres, by name
+      parameters:
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200": { $ref: "#/components/responses/GroupPage" }
+  /library/albums/{id}:
+    get:
+      tags: [library]
+      summary: One album (tracks in disc and track order, paginated)
+      parameters:
+        - { $ref: "#/components/parameters/GroupId" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200": { $ref: "#/components/responses/GroupDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+  /library/artists/{id}:
+    get:
+      tags: [library]
+      summary: One artist (its albums, plus allTracks); an album id below an artist lists that album's tracks
+      parameters:
+        - { $ref: "#/components/parameters/GroupId" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200": { $ref: "#/components/responses/GroupDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+  /library/genres/{id}:
+    get:
+      tags: [library]
+      summary: One genre (its albums); an album id below a genre lists that album's tracks
+      parameters:
+        - { $ref: "#/components/parameters/GroupId" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200": { $ref: "#/components/responses/GroupDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+  /library/albums/{id}/tracks:
+    get:
+      tags: [library]
+      summary: All tracks of an album
+      parameters:
+        - { $ref: "#/components/parameters/GroupId" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200": { $ref: "#/components/responses/TrackList" }
+  /library/artists/{id}/tracks:
+    get:
+      tags: [library]
+      summary: All tracks of an artist (or of any node below it)
+      parameters:
+        - { $ref: "#/components/parameters/GroupId" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200": { $ref: "#/components/responses/TrackList" }
+  /library/genres/{id}/tracks:
+    get:
+      tags: [library]
+      summary: All tracks of a genre
+      parameters:
+        - { $ref: "#/components/parameters/GroupId" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200": { $ref: "#/components/responses/TrackList" }
+  /library/songs:
+    get:
+      tags: [library]
+      summary: All tracks of the caller's roots, by title
+      parameters:
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200": { $ref: "#/components/responses/TrackList" }
+  /library/tracks:
+    get:
+      tags: [library]
+      summary: One track
+      parameters:
+        - { $ref: "#/components/parameters/PathRequired" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200":
+          description: The track
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot: { $ref: "#/components/schemas/Snapshot" }
+                  track: { $ref: "#/components/schemas/Track" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /library/search:
+    get:
+      tags: [library]
+      summary: Grouped search (tracks, albums, artists, folders) over the caller's roots
+      description: |
+        Every word of q must be contained (case and accent insensitive) in some field. With kind=all (default) each
+        group returns its first `limit` hits (default 10, max 50) and its `total`; with a single kind, `offset` and
+        `limit` page it.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: kind, in: query, schema: { type: string, enum: [all, track, album, artist, folder], default: all } }
+        - { name: scope, in: query, description: Directory path to search below, schema: { type: string } }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200":
+          description: Result groups; only the requested ones are present
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot: { $ref: "#/components/schemas/Snapshot" }
+                  q: { type: string }
+                  tracks: { $ref: "#/components/schemas/TrackPage" }
+                  albums: { $ref: "#/components/schemas/GroupPage" }
+                  artists: { $ref: "#/components/schemas/GroupPage" }
+                  folders: { $ref: "#/components/schemas/FolderPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /library/search/suggest:
+    get:
+      tags: [library]
+      summary: Typeahead suggestions (artists, albums, tracks, folders; prefix matches first)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 8, maximum: 20 } }
+      responses:
+        "200":
+          description: Suggestions (empty for a blank q)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot: { $ref: "#/components/schemas/Snapshot" }
+                  q: { type: string }
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, enum: [artist, album, track, folder] }
+                        label: { type: string }
+                        detail: { type: string, nullable: true }
+                        view: { type: string, description: "artists or albums (artist and album suggestions)" }
+                        id: { type: string, description: "group id (artist and album suggestions)" }
+                        path: { type: string, description: "track and folder suggestions" }
+                        art: { type: string, nullable: true }
+  /library/recent:
+    get:
+      tags: [library]
+      summary: Recently added tracks, newest first by first-seen timestamp (addedAt)
+      parameters:
+        - { name: since, in: query, description: Only tracks first seen at or after this epoch-millisecond time, schema: { type: integer, format: int64 } }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200": { $ref: "#/components/responses/TrackList" }
+  /library/random:
+    get:
+      tags: [library]
+      summary: Seeded random tracks from the caller's roots or from a directory subtree
+      description: |
+        The same seed gives the same tracks again for the same user and catalog; without a seed a new one is returned.
+        count defaults to the directory's Random N (settings.json) or 50. offset and limit page the picked tracks.
+      parameters:
+        - { name: path, in: query, description: Directory whose subtree to pick from, schema: { type: string } }
+        - { name: count, in: query, schema: { type: integer, minimum: 1, maximum: 1000 } }
+        - { name: seed, in: query, schema: { type: integer, format: int64 } }
+        - { $ref: "#/components/parameters/Offset" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Formats" }
+      responses:
+        "200":
+          description: Picked tracks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/TrackPage" }
+                  - type: object
+                    properties:
+                      snapshot: { $ref: "#/components/schemas/Snapshot" }
+                      seed: { type: integer, format: int64 }
+                      count: { type: integer }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /library/artwork:
+    get:
+      tags: [library]
+      summary: Cover art of a track or directory in one of three sizes
+      description: |
+        small is 160 px (lists), medium 300 px (grids, default), large 800 px (full screen); longest edge, never
+        upscaled, JPEG. Revalidate with If-None-Match (304). Use the art URLs of the other responses.
+      parameters:
+        - { name: kind, in: query, required: true, schema: { type: string, enum: [track, folder] } }
+        - { $ref: "#/components/parameters/PathRequired" }
+        - { name: size, in: query, schema: { type: string, enum: [small, medium, large], default: medium } }
+      responses:
+        "200":
+          description: The picture
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            image/jpeg: {}
+        "304": { description: Not modified }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /stream:
+    get:
+      tags: [stream]
+      summary: Audio of a track for the browser, with format negotiation
+      description: |
+        Session cookie; the allowed-roots check runs per request (403 forbidden_root before existence is revealed).
+        The server sends the original when its format is among the client's formats (query `formats`, else the list posted
+        to `/stream/formats` for the session, else mp3,ogg,flac,wav,opus), otherwise an MP3 transcode; MIDI is always MP3.
+        Content-Length is exact, also for transcodes; Range (206/416) and HEAD are supported. Headers
+        `X-Stream-Format` and `X-Stream-Transcoded` tell what was chosen. At most 2 concurrent live transcodes per user
+        (429 too_many_transcodes). 415 when nothing can play the file.
+      parameters:
+        - { $ref: "#/components/parameters/PathRequired" }
+        - { $ref: "#/components/parameters/Formats" }
+        - { name: Range, in: header, schema: { type: string, example: "bytes=0-" } }
+      responses:
+        "200": { description: The whole stream, content: { audio/*: {} } }
+        "206": { description: The requested byte range, content: { audio/*: {} } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "416": { description: Range not satisfiable }
+        "429": { $ref: "#/components/responses/Error" }
+  /stream/download:
+    get:
+      tags: [stream]
+      summary: The original file as an attachment (needs the download permission)
+      description: Content-Disposition attachment; Range supported. 403 forbidden without the permission.
+      parameters:
+        - { $ref: "#/components/parameters/PathRequired" }
+      responses:
+        "200": { description: The original file }
+        "206": { description: A byte range of the original }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /stream/formats:
+    get:
+      tags: [stream]
+      summary: The formats stored for this session
+      responses:
+        "200": { description: "{ formats: [string] }" }
+    post:
+      tags: [stream]
+      summary: Store the formats the browser plays (canPlayType), once per session
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { formats: { type: array, items: { type: string, enum: [mp3, ogg, flac, wav, aiff, opus, aac, alac, adts] } } } }
+      responses:
+        "200": { description: "{ formats: [string] } as stored" }
+  /stream/prefetch:
+    post:
+      tags: [stream]
+      summary: Hint that a track plays next; warms the transcode cache only if it needs transcoding
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [path], properties: { path: { type: string }, formats: { type: array, items: { type: string } } } }
+      responses:
+        "202":
+          description: "{ prefetching: boolean, reason: native|disabled|cached|queued }"
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: kd_session
+  parameters:
+    PathRequired: { name: path, in: query, required: true, description: Root-qualified path, schema: { type: string } }
+    Offset: { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    Formats:
+      name: formats
+      in: query
+      description: Comma-separated formats the client can play natively (default mp3,ogg,flac,wav,opus); decides playability.
+      schema: { type: string }
+    GroupId: { name: id, in: path, required: true, description: The id of a group item, schema: { type: string } }
+  responses:
+    Error:
+      description: Error (bad_request, unauthenticated, forbidden_root, not_found, ...)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    GroupPage:
+      description: A page of groups
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/GroupPage" }
+    GroupDetail:
+      description: A group (item) with its albums page (artist, genre) or its tracks page (album)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              snapshot: { $ref: "#/components/schemas/Snapshot" }
+              item: { $ref: "#/components/schemas/GroupItem" }
+              allTracks: { $ref: "#/components/schemas/GroupItem" }
+              total: { type: integer }
+              offset: { type: integer }
+              limit: { type: integer }
+              albums: { type: array, items: { $ref: "#/components/schemas/GroupItem" } }
+              tracks: { type: array, items: { $ref: "#/components/schemas/Track" } }
+    TrackList:
+      description: A page of tracks
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/TrackPage" }
+              - type: object
+                properties:
+                  snapshot: { $ref: "#/components/schemas/Snapshot" }
+  schemas:
+    Snapshot:
+      type: integer
+      format: int64
+      description: Catalog version; changes whenever the library changes.
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { nullable: true }
+    FolderRef:
+      type: object
+      properties:
+        type: { type: string, enum: [folder] }
+        path: { type: string }
+        name: { type: string }
+        displayName: { type: string }
+        virtual: { type: boolean, description: "True for a virtual album: one audio file split into tracks by a cue sheet or chapters (path = the file path)" }
+        art: { type: string, nullable: true, description: "URL of the artwork endpoint (append &size=)" }
+    Folder:
+      type: object
+      properties:
+        snapshot: { $ref: "#/components/schemas/Snapshot" }
+        path: { type: string }
+        name: { type: string }
+        displayName: { type: string }
+        virtual: { type: boolean }
+        isRoot: { type: boolean }
+        parent: { type: string, nullable: true }
+        sort: { type: string, enum: [filename, title, track, mtime, explicit] }
+        album:
+          type: object
+          description: The album overlay of settings.json
+          properties:
+            title: { type: string, nullable: true }
+            albumArtist: { type: string, nullable: true }
+            year: { type: integer, nullable: true }
+            genre: { type: string, nullable: true }
+            discNumber: { type: integer, nullable: true }
+            discTotal: { type: integer, nullable: true }
+        random: { type: integer, description: "Random N of settings.json (0 = off); use /library/random?path=" }
+        recent: { type: integer }
+        views: { type: array, items: { type: string } }
+        art: { type: string, nullable: true }
+        trackCount: { type: integer }
+        folderCount: { type: integer }
+        total: { type: integer, description: Number of children (folders and tracks) }
+        offset: { type: integer }
+        limit: { type: integer }
+        children:
+          type: array
+          items:
+            oneOf:
+              - { $ref: "#/components/schemas/FolderRef" }
+              - type: object
+                properties:
+                  type: { type: string, enum: [track] }
+                  path: { type: string }
+                  track: { $ref: "#/components/schemas/Track" }
+    Track:
+      type: object
+      properties:
+        path: { type: string }
+        name: { type: string }
+        title: { type: string }
+        artist: { type: string, nullable: true }
+        album: { type: string, nullable: true, description: With the folder's album overlay applied }
+        albumArtist: { type: string, nullable: true }
+        genre: { type: string, nullable: true }
+        composer: { type: string, nullable: true }
+        transcriber: { type: string, nullable: true, description: "From the directory's list.json" }
+        year: { type: integer, nullable: true }
+        trackNo: { type: integer, nullable: true }
+        discNo: { type: integer, nullable: true }
+        discTotal: { type: integer, nullable: true }
+        format: { type: string, enum: [mp3, ogg, flac, wav, aiff, midi, opus, aac, alac, adts] }
+        durationMillis: { type: integer, format: int64, description: 0 = unknown }
+        bitrateKbps: { type: integer }
+        sampleRate: { type: integer }
+        channels: { type: integer }
+        size: { type: integer, format: int64 }
+        addedAt: { type: integer, format: int64, description: First-seen epoch milliseconds (0 = unknown) }
+        playability: { type: string, enum: [native, transcoded] }
+        streamFormat: { type: string, description: "Format the stream delivers: the native one or mp3" }
+        art: { type: string, nullable: true }
+        segment:
+          type: object
+          nullable: true
+          description: "Set for a track of a cue sheet or embedded chapters (path = source#index); null for normal files. Streams as the exact decoded range (MP3 or LPCM), never as a byte range of the file"
+          properties:
+            source: { type: string, description: Path of the source audio file }
+            index: { type: integer, description: 1-based section number }
+            origin: { type: string, enum: [cue, tag-cue, chapters] }
+            startMillis: { type: integer, format: int64 }
+            endMillis: { type: integer, format: int64 }
+    GroupItem:
+      type: object
+      properties:
+        id: { type: string }
+        view: { type: string, enum: [albums, artists, genres] }
+        type: { type: string, enum: [album, artist, genre, all_tracks] }
+        title: { type: string }
+        artist: { type: string, nullable: true }
+        year: { type: integer, nullable: true }
+        trackCount: { type: integer }
+        albumCount: { type: integer, description: Artists and genres only }
+        durationMillis: { type: integer, format: int64 }
+        art: { type: string, nullable: true }
+    TrackPage:
+      type: object
+      properties:
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/Track" } }
+    GroupPage:
+      type: object
+      properties:
+        snapshot: { $ref: "#/components/schemas/Snapshot" }
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/GroupItem" } }
+    FolderPage:
+      type: object
+      properties:
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/FolderRef" } }

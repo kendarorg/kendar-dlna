@@ -1,0 +1,6 @@
+# Keep only this file and .gitkeep; ignore all audio files and subdirectories
+*
+!.gitignore
+!.gitkeep
+midi
+mp3s

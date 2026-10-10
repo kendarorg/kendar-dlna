@@ -1,0 +1,82 @@
+/* Admin library page: directory tree + the player's folder look. Colors/tokens come from app.css and player.css. */
+.library { display: grid; grid-template-columns: 17rem minmax(0, 1fr); gap: 1.2rem; align-items: start; max-width: 1400px; }
+.lib-main { min-width: 0; }
+.lib-scrim { display: none; }
+
+/* tree */
+.lib-tree { position: sticky; top: 0; max-height: calc(100vh - var(--top-h) - var(--bar-h) - 2rem); max-height: calc(100dvh - var(--top-h) - var(--bar-h) - 2rem);
+  overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .4rem; }
+.lib-tree-head { display: flex; align-items: center; justify-content: space-between; padding: .3rem .5rem .4rem; color: var(--muted);
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
+.lib-tree-head .icon-btn { width: 2rem; height: 2rem; }
+.dirtree { list-style: none; margin: 0; padding: 0; }
+.dt-item { display: flex; align-items: center; gap: .1rem; padding: .1rem .3rem .1rem calc(.2rem + var(--lvl, 0) * 1rem);
+  border-radius: 8px; cursor: default; outline-offset: -2px; }
+.dt-item:hover { background: var(--hover); }
+.dt-item.active { background: var(--info-bg); color: var(--accent); font-weight: 600; }
+.dt-twisty { width: 1.5rem; height: 1.5rem; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; border-radius: 50%; }
+.dt-twisty .ic { width: 1.1rem; height: 1.1rem; transform: rotate(-90deg); transition: transform .12s; }
+.dt-twisty.open .ic { transform: none; }
+button.dt-twisty:hover:not(:disabled) { border: 0; background: var(--hover); }
+.dt-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: .45rem; padding: .25rem .2rem; color: inherit; text-decoration: none; }
+.dt-name .ic { width: 1.1rem; height: 1.1rem; color: var(--muted); }
+.dt-item.active .dt-name .ic { color: var(--accent); }
+.dt-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-dot { width: .55rem; height: .55rem; border-radius: 50%; flex: none; margin-right: .2rem; background: var(--warn); }
+.dt-dot.bad { background: var(--bad); }
+
+/* header */
+.lib-arts { display: flex; gap: .6rem; flex: none; }
+.lib-arts .head-art.rear { width: 6rem; height: 6rem; align-self: flex-end; opacity: .95; }
+.lib-badges { margin: .2rem 0 .5rem; }
+.lib-badges .badge:first-child { margin-left: 0; }
+.lib-badges:empty { display: none; }
+.lib-actions .button, .lib-actions button:not(.icon-btn) { display: inline-flex; align-items: center; gap: .4rem; }
+.lib-actions .ic { width: 1.1rem; height: 1.1rem; }
+.lib-actions .badge { margin-left: .1rem; }
+.lib-sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 .2rem; }
+.lib-toggle { align-items: center; gap: .4rem; margin-bottom: .6rem; }
+.lib-main .tiles { margin-bottom: 1.2rem; }
+.tile-more[aria-expanded="true"] { opacity: 1; }
+.rowmenu { display: inline-flex; }
+.tile-art .rowmenu { display: contents; }
+.tile-art .art { cursor: pointer; }
+.tile-title .badge { font-weight: 400; }
+.tile-sub .badge { margin-left: .2rem; }
+a.icon-btn { text-decoration: none; }
+
+/* track rows (same look as the player's track list) */
+.lib-tracks { margin-top: .4rem; }
+.lib-row { display: grid; align-items: center; gap: .6rem; padding: .25rem .4rem; border-radius: 8px;
+  grid-template-columns: 2.4rem 2.8rem minmax(0, 3fr) minmax(0, 1.6fr) minmax(12rem, 2fr) 3.6rem 5.6rem; }
+.lib-row:hover { background: var(--hover); }
+.lib-row .c-num { text-align: center; }
+.lib-row .t, .lib-row .s, .lib-row .c-album { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-row .s, .lib-row .c-album, .lib-row .c-dur { color: var(--muted); font-size: .88rem; }
+.lib-row .fname { opacity: .8; }
+.lib-row .c-fmt { font-size: .82rem; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .3rem; }
+.lib-row .c-fmt .badge { margin-left: 0; }
+.lib-row .fmt { font-weight: 600; letter-spacing: .03em; }
+.lib-row .c-more { display: inline-flex; justify-content: flex-end; align-items: center; }
+
+@media (max-width: 860px) {
+  .library { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .lib-scrim { display: block; position: fixed; inset: var(--top-h) 0 0 0; background: rgba(0, 0, 0, .45); z-index: 20; }
+  .lib-tree { position: fixed; top: var(--top-h); bottom: 0; left: 0; width: min(20rem, 88vw); max-height: none; border-radius: 0 10px 10px 0;
+    transform: translateX(-105%); transition: transform .18s; z-index: 25; visibility: hidden; }
+  .lib-tree.open { transform: none; visibility: visible; }
+  .lib-arts .head-art, .lib-arts .head-art.art { width: 6.5rem; height: 6.5rem; }
+  .lib-arts .head-art.rear, .lib-arts .head-art.rear.art { width: 4rem; height: 4rem; }
+  .lib-actions { gap: .4rem; }
+  .lib-sep { display: none; }
+  .lib-row { grid-template-columns: 2rem 2.8rem minmax(0, 1fr) 3rem 5.2rem;
+    grid-template-areas: "num art title dur more" ". . fmt fmt fmt"; row-gap: .1rem; }
+  .lib-row .c-num { grid-area: num; } .lib-row .c-art { grid-area: art; } .lib-row .c-title { grid-area: title; }
+  .lib-row .c-dur { grid-area: dur; text-align: right; } .lib-row .c-more { grid-area: more; } .lib-row .c-fmt { grid-area: fmt; }
+  .lib-row .c-album { display: none; }
+  .tile-more { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lib-tree, .dt-twisty .ic { transition: none; }
+}

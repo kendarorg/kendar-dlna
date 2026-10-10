@@ -1,0 +1,75 @@
+/* Personal pages (playlists, favorites, history), notices, Home quick actions and the admin user pages. */
+.fav.on { color: #e0245e; }
+.badge.ok { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
+.mono { font-family: ui-monospace, Consolas, monospace; font-size: .88rem; }
+.path { overflow-wrap: anywhere; font-family: ui-monospace, Consolas, monospace; font-size: .8rem; }
+
+/* playlist tabs, list */
+.tabs { display: flex; gap: .3rem; flex-wrap: wrap; margin: .2rem 0 .8rem; border-bottom: 1px solid var(--line); }
+.tab { padding: .45rem .9rem; text-decoration: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.create { margin-bottom: .8rem; }
+.pl-list { margin: 0; }
+.pl-row { display: flex; align-items: center; gap: .5rem; padding: .35rem .4rem; border-radius: 8px; }
+.pl-row:hover { background: var(--hover); }
+.pl-name { font-weight: 600; color: var(--text); text-decoration: none; }
+.pl-name:hover { text-decoration: underline; }
+.pl-head h1 { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.pl-head .row { margin-top: .4rem; }
+
+/* entry rows (playlists, favorites, history) */
+.entries { display: flex; flex-direction: column; margin-top: .6rem; }
+.en-row { display: grid; grid-template-columns: 2.4rem 2.8rem minmax(0, 3fr) minmax(0, 2fr) 3.6rem auto; align-items: center; gap: .6rem;
+  padding: .25rem .4rem; border-radius: 8px; }
+.entries.withextra .en-row { grid-template-columns: 2.4rem 2.8rem minmax(0, 3fr) minmax(0, 2fr) 3.6rem 9rem auto; }
+.en-row:hover { background: var(--hover); }
+.en-row.current { background: var(--info-bg); }
+.en-row.current .t { color: var(--accent); font-weight: 600; }
+.en-row.missing { background: var(--bad-bg); }
+.en-row.locked { opacity: .65; }
+.en-row .t, .en-row .s, .en-row .c-album, .en-row .c-extra { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.en-row .s, .en-row .c-album, .en-row .c-dur, .en-row .c-extra { color: var(--muted); font-size: .88rem; }
+.en-row .s.path { white-space: normal; overflow-wrap: anywhere; }
+.en-row .c-play { display: inline-flex; justify-content: center; }
+.en-tools { display: inline-flex; align-items: center; justify-content: flex-end; gap: .1rem; flex-wrap: nowrap; }
+.en-tools .icon-btn { width: 2rem; height: 2rem; }
+.en-tools .ic { width: 1.15rem; height: 1.15rem; }
+.en-tools .fixbtn { display: inline-flex; align-items: center; gap: .3rem; }
+.fixbox { margin: .6rem 0; }
+
+/* add-to-playlist dialog */
+.pick-list { margin: 0; max-height: 40vh; overflow-y: auto; }
+.pick { display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left; border: 0; background: none; border-radius: 8px; padding: .5rem .6rem; }
+.pick:hover:not(:disabled) { background: var(--hover); }
+
+/* Home quick actions */
+.quick { display: flex; flex-wrap: wrap; gap: .6rem; margin: .2rem 0 1rem; }
+.quick-btn { display: inline-flex; align-items: center; gap: .6rem; padding: .7rem 1.1rem; border-radius: 12px; text-align: left; }
+.quick-btn small { display: block; font-size: .78rem; opacity: .85; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* continue listening / playing on another device */
+.notices { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .8rem; }
+.notice { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .5rem .8rem; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--info-bg); }
+.notice.remote { border-color: var(--warn); background: var(--warn-bg); }
+.notice .grow { flex: 1 1 60%; min-width: 0; }
+
+/* admin: users and moderation */
+.users-table td.actions { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.users-table .edit-row td { background: var(--bg); }
+.roots-field { display: flex; flex-direction: column; gap: .3rem; }
+.roots-field label.inline { white-space: normal; }
+.issued { border-color: var(--ok); }
+.issued input.mono { min-width: 14rem; }
+
+@media (max-width: 860px) {
+  .en-row, .entries.withextra .en-row { grid-template-columns: 2.4rem 2.8rem minmax(0, 1fr) 3rem; grid-template-areas: "p a t d" ". tools tools tools"; row-gap: .1rem; }
+  .en-row .c-play { grid-area: p; }
+  .en-row .c-art { grid-area: a; }
+  .en-row .c-title { grid-area: t; }
+  .en-row .c-dur { grid-area: d; }
+  .en-row .c-album, .en-row .c-extra { display: none; }
+  .en-tools { grid-area: tools; flex-wrap: wrap; justify-content: flex-start; }
+  .users-table td.actions { min-width: 12rem; }
+  .quick-btn { flex: 1 1 100%; }
+}

@@ -1,0 +1,25 @@
+{
+  "profiles": [
+    { "id": "vlc", "description": "provisional: VLC / LibVLC plays everything natively",
+      "match": { "userAgentRegex": "VLC|LibVLC" },
+      "nativeFormats": ["MP3", "OGG", "FLAC", "WAV", "AIFF", "OPUS", "AAC", "ALAC", "ADTS"] },
+    { "id": "bubbleupnp", "description": "provisional: BubbleUPnP",
+      "match": { "userAgentRegex": "BubbleUPnP" },
+      "nativeFormats": ["MP3", "OGG", "FLAC", "WAV", "AIFF", "OPUS", "AAC", "ADTS"] },
+    { "id": "kodi", "description": "provisional: Kodi",
+      "match": { "userAgentRegex": "Kodi|XBMC" },
+      "nativeFormats": ["MP3", "OGG", "FLAC", "WAV", "AIFF", "OPUS", "AAC", "ALAC", "ADTS"] },
+    { "id": "foobar2000", "description": "provisional: foobar2000",
+      "match": { "userAgentRegex": "foobar2000" },
+      "nativeFormats": ["MP3", "OGG", "FLAC", "WAV", "AIFF", "OPUS", "AAC", "ALAC", "ADTS"] },
+    { "id": "wmp", "description": "provisional: Windows Media Player",
+      "match": { "userAgentRegex": "Windows-Media-Player|WMFSDK|NSPlayer" },
+      "nativeFormats": ["MP3", "WAV", "AAC"] },
+    { "id": "samsung-tv", "description": "provisional: Samsung TV, one res only",
+      "match": { "userAgentRegex": "SEC_HHP|SamsungWiselinkPro|Samsung" },
+      "nativeFormats": ["MP3", "WAV", "AAC"], "quirks": ["SINGLE_RES"] },
+    { "id": "lg-tv", "description": "provisional: LG TV, one res only",
+      "match": { "userAgentRegex": "LGE|NetCast|WebOS|\\bLG\\b" },
+      "nativeFormats": ["MP3", "FLAC", "WAV", "AAC"], "quirks": ["SINGLE_RES"] }
+  ]
+}

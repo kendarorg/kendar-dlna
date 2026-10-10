@@ -1,0 +1,21 @@
+{
+  "library" : {
+    "roots" : {
+      "Music" : "C:/Data/Dev/kendar-dlna/dev/music"
+    },
+    "playlistsDir" : "C:/Data/Dev/kendar-dlna/dev/playlists",
+    "dataDir" : "C:/Data/Dev/kendar-dlna/dev/data"
+  },
+  "network" : {
+    "advertiseAddress" : null,
+    "port" : 8200
+  },
+  "server" : {
+    "friendlyName" : "Kendar DLNA"
+  },
+  "admin" : {
+    "username" : "admin",
+    "passwordHash" : "pbkdf2-sha256$310000$iabkq/BCxD3pbq+RSU5zeg==$lPMUPKT9WTDWXiEsipU0RKzATk5fh/0/AAhAGArlIGU=",
+    "mustChange" : false
+  }
+}

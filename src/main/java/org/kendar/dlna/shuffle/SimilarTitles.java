@@ -12,14 +12,14 @@ import org.kendar.dlna.shared.Normalizer;
  * Tells whether two tracks are probably the same song (a live or remastered copy, a duplicate in another album), so
  * a random pick does not play it twice. Titles are normalized to letters and digits; two titles are alike when they
  * are equal, when the shorter one lies inside the other, or when they differ by a few characters (edit distance, the
- * Hamming distance of same-length titles included). Titles that differ in their digits ("Track 1", "Track 2") and
+ * Hamming distance of same-length titles included). Titles that differ in their digits ("Track 1", "Track 2", but "Imagine" is inside "Imagine 2010") and
  * very short titles only match when equal.
  */
 public final class SimilarTitles {
 
     static final int MIN_FUZZY_LENGTH = 5;
     /** The shorter title must be at least this share of the longer one to count as "inside" it. */
-    static final double MIN_CONTAINED_SHARE = 0.5;
+    static final double MIN_CONTAINED_SHARE = 0.3;
     /** Share of the longer title that may differ. */
     static final double MAX_DISTANCE_SHARE = 0.15;
 
@@ -57,11 +57,17 @@ public final class SimilarTitles {
         }
         String shorter = a.length() <= b.length() ? a : b;
         String longer = shorter == a ? b : a;
-        if (shorter.length() < MIN_FUZZY_LENGTH || !digits(a).equals(digits(b))) {
+        if (shorter.length() < MIN_FUZZY_LENGTH) {
             return false;
         }
-        if (shorter.length() >= longer.length() * MIN_CONTAINED_SHARE && longer.contains(shorter)) {
+        String ds = digits(shorter);
+        boolean sameDigits = ds.equals(digits(longer));
+        if ((sameDigits || ds.isEmpty()) && shorter.length() >= longer.length() * MIN_CONTAINED_SHARE
+                && longer.contains(shorter)) {
             return true;
+        }
+        if (!sameDigits) {
+            return false;
         }
         int max = Math.max(1, (int) (longer.length() * MAX_DISTANCE_SHARE));
         return longer.length() - shorter.length() <= max && distance(shorter, longer, max) <= max;

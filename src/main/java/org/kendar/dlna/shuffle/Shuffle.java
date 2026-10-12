@@ -191,7 +191,7 @@ public final class Shuffle implements ContainerNavigation {
         List<Track> pool = new ArrayList<>(catalog.get().subtreeTracks(folder.ref()));
         pool.sort(Comparator.comparing(Track::ref));   // the seeded order must not depend on display order
         Collections.shuffle(pool, new Random(seed));
-        List<Track> picked = n < pool.size() ? pool.subList(0, n) : pool;
+        List<Track> picked = SimilarTitles.distinct(pool, n);
         return new RandomSnapshot(id, folder.id(), client, n, picked.stream().map(Track::ref).toList(), now);
     }
 

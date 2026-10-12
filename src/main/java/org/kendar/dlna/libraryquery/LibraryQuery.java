@@ -614,7 +614,8 @@ public final class LibraryQuery {
         }
         long seed = q.get("seed") == null || q.get("seed").isBlank() ? seeds.nextLong()
                 : Long.parseLong(q.get("seed").strip());
-        List<Track> picked = Shuffle.pick(snap, roots, folder, user.id(), seed);
+        List<Track> picked = org.kendar.dlna.shuffle.SimilarTitles.distinct(
+                Shuffle.pick(snap, roots, folder, user.id(), seed), count);
         if (picked.size() > count) {
             picked = picked.subList(0, count);
         }

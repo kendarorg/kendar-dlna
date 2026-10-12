@@ -7,7 +7,7 @@
 export function withPlayability(track, formats) {
   if (!track || track.playability) return track;
   const format = String(track.format || '').toLowerCase();
-  const native = format !== 'midi' && (formats || []).includes(format);
+  const native = format !== 'midi' && format !== 'abc' && (formats || []).includes(format);
   return Object.assign({}, track, { playability: native ? 'native' : 'transcoded', streamFormat: native ? format : 'mp3' });
 }
 

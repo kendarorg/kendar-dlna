@@ -49,7 +49,7 @@ final class ProbingTagReader implements TagReader {
         TrackMeta meta = delegate.read(file, format);
         Format actual = meta.format() != null ? meta.format() : format;
         boolean mp4Family = actual == Format.AAC || actual == Format.ALAC || actual == Format.ADTS;
-        if (meta.sampleCount() > 0 || actual == Format.MP3 || actual == Format.MIDI) {
+        if (meta.sampleCount() > 0 || actual == Format.MP3 || actual.rendered()) {
             return meta;
         }
         try {

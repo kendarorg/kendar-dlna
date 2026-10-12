@@ -16,6 +16,8 @@ public enum Format {
     WAV("wav"),
     AIFF("aiff", "aif", "aifc"),
     MIDI("mid", "midi", "kar"),
+    /** ABC notation text ({@code .abc}); converted to MIDI and rendered, one virtual track per tune. */
+    ABC("abc"),
     OPUS("opus"),
     /** AAC-LC in an MP4 container ({@code .m4a}, {@code .mp4}). */
     AAC("m4a", "mp4"),
@@ -36,7 +38,12 @@ public enum Format {
 
     /** Whether the tags of files of this format can be written (at least partly; not Opus and raw ADTS AAC). */
     public boolean tagsEditable() {
-        return this != OPUS && this != ADTS;
+        return this != OPUS && this != ADTS && this != ABC;
+    }
+
+    /** Formats that only exist rendered: MIDI and ABC are turned into audio by the MIDI renderer, never served as is. */
+    public boolean rendered() {
+        return this == MIDI || this == ABC;
     }
 
     /**

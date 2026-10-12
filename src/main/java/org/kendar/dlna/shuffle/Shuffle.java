@@ -166,7 +166,7 @@ public final class Shuffle implements ContainerNavigation {
                 pool.addAll(snap.subtreeTracks(folder));
             }
         } else {
-            for (Track t : snap.tracks()) {
+            for (Track t : snap.visibleTracks()) {
                 if (roots.contains(t.ref().root())) {
                     pool.add(t);
                 }

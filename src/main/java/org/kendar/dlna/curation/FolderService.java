@@ -123,9 +123,11 @@ public final class FolderService {
         // a client that does not know a field must not drop its stored value
         boolean keepWhole = body.has("keepWholeFiles") ? next.keepWholeFiles() : folder.settings().keepWholeFiles();
         Integer bucket = body.has("bucketThreshold") ? next.bucketThreshold() : folder.settings().bucketThreshold();
-        if (keepWhole != next.keepWholeFiles() || !java.util.Objects.equals(bucket, next.bucketThreshold())) {
+        boolean hidden = body.has("hidden") ? next.hidden() : folder.settings().hidden();
+        if (keepWhole != next.keepWholeFiles() || !java.util.Objects.equals(bucket, next.bucketThreshold())
+                || hidden != next.hidden()) {
             next = new DirectorySettings(next.sort(), next.order(), next.album(), next.random(), next.views(),
-                    next.recent(), next.displayName(), keepWhole, bucket);
+                    next.recent(), next.displayName(), keepWhole, bucket, hidden);
         }
         validate(next);
         return store(folder, next);
@@ -223,6 +225,11 @@ public final class FolderService {
             out.remove("bucketThreshold");
         } else {
             out.put("bucketThreshold", s.bucketThreshold());
+        }
+        if (s.hidden()) {
+            out.put("hidden", true);
+        } else {
+            out.remove("hidden");
         }
         if (s.keepWholeFiles()) {
             out.put("keepWholeFiles", true);
@@ -339,7 +346,7 @@ public final class FolderService {
         AlbumInfo album = new AlbumInfo(title, albumArtist, num(year), genre, num(disc), num(discTotal));
         DirectorySettings cur = folder.settings();
         DirectorySettings next = new DirectorySettings(cur.sort(), cur.order(), album, cur.random(), cur.views(),
-                cur.recent(), cur.displayName(), cur.keepWholeFiles(), cur.bucketThreshold());
+                cur.recent(), cur.displayName(), cur.keepWholeFiles(), cur.bucketThreshold(), cur.hidden());
         if (write) {
             store(folder, next);
         }

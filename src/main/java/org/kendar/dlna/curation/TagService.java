@@ -1,6 +1,7 @@
 package org.kendar.dlna.curation;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -8,10 +9,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 import org.kendar.dlna.catalog.Track;
 import org.kendar.dlna.ingestion.CatalogService;
+import org.kendar.dlna.ingestion.ListJson;
 import org.kendar.dlna.ingestion.TagReader;
 import org.kendar.dlna.ingestion.TrackMeta;
 import org.kendar.dlna.shared.RootRef;
@@ -115,6 +118,7 @@ public final class TagService {
             Files.copy(file, tmp);
             writer.write(tmp, old.format(), edit);
             AtomicFiles.replace(tmp, file);
+            syncListJson(file, edit);
         } catch (TagWriter.TagWriteException | IOException e) {
             LOG.warning("Tag write failed for " + ref + ": " + e);
             throw new CurationException(CurationException.IO_ERROR,
@@ -139,5 +143,48 @@ public final class TagService {
                     "Tags written but the file could not be re-read (rescan to refresh): " + ref + ": "
                             + e.getMessage(), null, e);
         }
+    }
+
+    /**
+     * A list.json entry overrides the tags of its file, so a tag edit would not show. Fields the entry sets are
+     * updated to the new value too (an emptied field falls back to the tag in the file).
+     */
+    private void syncListJson(Path file, TagEdit edit) {
+        try {
+            Path list = ListJson.locate(file.toAbsolutePath().getParent()).orElse(null);
+            if (list == null) {
+                return;
+            }
+            String key = ListJson.key(file.getFileName().toString());
+            List<ListJson.Entry> entries = new ArrayList<>(ListJson.parseFile(list).entries());
+            boolean changed = false;
+            for (int i = 0; i < entries.size(); i++) {
+                ListJson.Entry e = entries.get(i);
+                if (e.isSection() || !e.matchKey().equals(key)) {
+                    continue;
+                }
+                String title = pick(e.title(), edit.title());
+                String author = pick(e.author(), edit.artist());
+                String partOf = pick(e.partOf(), edit.album());
+                if (!Objects.equals(title, e.title()) || !Objects.equals(author, e.author())
+                        || !Objects.equals(partOf, e.partOf())) {
+                    entries.set(i, new ListJson.Entry(e.filename(), author, partOf, title, e.transcriber()));
+                    changed = true;
+                }
+            }
+            if (changed) {
+                AtomicFiles.write(list, ListService.render(entries).getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (IOException | RuntimeException e) {
+            LOG.warning("Cannot update list.json for " + file + ": " + e);
+        }
+    }
+
+    /** The entry's value, replaced by the edit's when the entry sets the field and the edit touches it. */
+    private static String pick(String entryValue, String edited) {
+        if (entryValue == null || edited == null) {
+            return entryValue;
+        }
+        return edited.isEmpty() ? null : edited;
     }
 }

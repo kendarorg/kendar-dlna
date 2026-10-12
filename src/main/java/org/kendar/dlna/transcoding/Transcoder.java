@@ -31,12 +31,25 @@ public final class Transcoder {
         }
     }
 
+    /** Turns the n-th tune (from 1) of an ABC file into a MIDI sequence; supplied by the platform. */
+    @FunctionalInterface
+    public interface AbcLoader {
+        Sequence load(Path file, int tune) throws IOException, InvalidMidiDataException;
+    }
+
     private final MidiRenderer midi;
+    private final AbcLoader abc;
     private final Semaphore renders = new Semaphore(1);
 
     /** @param midi renderer for MIDI sources, or null when MIDI is unavailable */
     public Transcoder(MidiRenderer midi) {
+        this(midi, null);
+    }
+
+    /** @param abc converter of ABC tunes, or null when ABC files cannot be played */
+    public Transcoder(MidiRenderer midi, AbcLoader abc) {
         this.midi = midi;
+        this.abc = abc;
     }
 
     public boolean midiAvailable() {
@@ -90,11 +103,27 @@ public final class Transcoder {
 
     /** Renders a MIDI file (also {@code .kar}) fully; blocks while another render runs. */
     public Rendered renderMidi(Path file) throws IOException {
+        return render(file, () -> MidiSystem.getSequence(file.toFile()));
+    }
+
+    /** Renders the tune {@code tune} (from 1) of an ABC file. */
+    public Rendered renderAbc(Path file, int tune) throws IOException {
+        if (abc == null) {
+            throw new IOException("ABC conversion is unavailable");
+        }
+        return render(file, () -> abc.load(file, tune));
+    }
+
+    private interface SequenceSource {
+        Sequence get() throws IOException, InvalidMidiDataException;
+    }
+
+    private Rendered render(Path file, SequenceSource source) throws IOException {
         if (midi == null) {
             throw new IOException("MIDI rendering is unavailable");
         }
         try {
-            Sequence seq = MidiSystem.getSequence(file.toFile());
+            Sequence seq = source.get();
             renders.acquire();
             try {
                 MidiRenderer.Result r = midi.render(seq);

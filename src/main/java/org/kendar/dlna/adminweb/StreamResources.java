@@ -145,15 +145,15 @@ final class StreamResources {
 
     /** Native when the client plays the format (never MIDI) or nothing can transcode it; else MP3. */
     StreamVariant choose(Track t, Set<String> formats) {
-        boolean nativeOk = t.format() != Format.MIDI && !t.isSegment() && formats.contains(t.format().name().toLowerCase(Locale.ROOT));
+        boolean nativeOk = !t.format().rendered() && !t.isSegment() && formats.contains(t.format().name().toLowerCase(Locale.ROOT));
         if (nativeOk) {
             return StreamVariant.NATIVE;
         }
         if (transcoding != null && transcoding.canTranscode(t.format())) {
             return StreamVariant.mp3(0);
         }
-        if (t.format() == Format.MIDI) {
-            throw new ApiException(415, "unsupported_format", "This file cannot be played: MIDI needs transcoding");
+        if (t.format().rendered()) {
+            throw new ApiException(415, "unsupported_format", "This file cannot be played: this format only exists rendered and transcoding is unavailable");
         }
         return StreamVariant.NATIVE;   // transcoding is off: the original is all there is
     }

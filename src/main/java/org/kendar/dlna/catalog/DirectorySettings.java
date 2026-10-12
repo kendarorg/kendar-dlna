@@ -7,13 +7,21 @@ import java.util.List;
  * is N of the "Recently added" container (0 = disabled). {@code displayName} (nullable, trimmed, never blank)
  * replaces the directory name in every listing; the directory on disk is not renamed. {@code bucketThreshold}
  * (nullable = use {@code views.bucketThreshold} of the config) is the list length above which the Artists and
- * Titles views of this directory are split into A-Z / # containers.
+ * Titles views of this directory are split into A-Z / # containers. {@code hidden} keeps the directory and everything
+ * below it out of every listing, search, shuffle and view (the admin still sees it); it stays addressable by path.
  */
 public record DirectorySettings(SortMode sort, List<String> order, AlbumInfo album, int random,
-        List<ViewKind> views, int recent, String displayName, boolean keepWholeFiles, Integer bucketThreshold) {
+        List<ViewKind> views, int recent, String displayName, boolean keepWholeFiles, Integer bucketThreshold,
+        boolean hidden) {
 
     public static final DirectorySettings DEFAULT =
             new DirectorySettings(SortMode.FILENAME, List.of(), AlbumInfo.NONE, 0, List.of(), 0, null, false, null);
+
+    /** Settings of a shown directory ({@code hidden} false). */
+    public DirectorySettings(SortMode sort, List<String> order, AlbumInfo album, int random,
+            List<ViewKind> views, int recent, String displayName, boolean keepWholeFiles, Integer bucketThreshold) {
+        this(sort, order, album, random, views, recent, displayName, keepWholeFiles, bucketThreshold, false);
+    }
 
     /** Settings without a bucket threshold of their own. */
     public DirectorySettings(SortMode sort, List<String> order, AlbumInfo album, int random,

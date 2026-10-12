@@ -42,6 +42,7 @@ const reporter = createPlayReporter({
 const sync = createQueueSync({
   read() {
     const q = player.state.queue;
+    if (quiet(player.current)) return null;   // maintenance listening is not stored
     return buildPayload(snapshot(q), player.state.position, deviceId, null);
   },
   async put(payload, options) {
@@ -58,8 +59,11 @@ sync.suspend(true);
 
 let reportedId = null;     // queue entry id whose play was already reported on pause
 
+/** Tracks played from the maintenance pages (tag editor) carry `ephemeral`: no history, no stored queue. */
+function quiet(entry) { return !!(entry && entry.track && entry.track.ephemeral); }
+
 player.events.on('trackend', e => {
-  if (!e.track) return;
+  if (!e.track || e.track.ephemeral) return;
   if (reportedId !== null && reportedId === player.state.loadedId) { reportedId = null; return; }   // counted on pause
   reporter.report({ path: e.track.path, playedSeconds: e.playedSeconds, durationSeconds: e.durationSeconds });
 });
@@ -73,7 +77,7 @@ player.events.on('state', e => {
     // pausing or stopping counts as a play (otherwise it would only count when the user leaves the track)
     const entry = player.current;
     const st = player.state;
-    if (entry && st.loadedId === entry.id && reportedId !== entry.id
+    if (entry && !quiet(entry) && st.loadedId === entry.id && reportedId !== entry.id
         && reporter.report({ path: entry.track.path, playedSeconds: st.position, durationSeconds: st.duration, force: true })) {
       reportedId = entry.id;
     }
@@ -86,7 +90,7 @@ function leave() {
   leaving = true;
   const entry = player.current;
   const st = player.state;
-  if (entry && st.loadedId === entry.id && reportedId !== entry.id && (st.status === 'playing' || st.status === 'paused')) {
+  if (entry && !quiet(entry) && st.loadedId === entry.id && reportedId !== entry.id && (st.status === 'playing' || st.status === 'paused')) {
     reporter.report({ path: entry.track.path, playedSeconds: st.position, durationSeconds: st.duration });
   }
   reporter.flush().catch(() => {});

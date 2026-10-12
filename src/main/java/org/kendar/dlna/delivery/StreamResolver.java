@@ -112,7 +112,7 @@ public final class StreamResolver {
             variant = StreamVariant.mp3(0);   // a cue / chapter track only exists decoded: never a byte range of the file
         }
         if (variant.transcoded() ? transcoding == null || !transcoding.canTranscode(track.format())
-                : track.format() == Format.MIDI) {
+                : track.format().rendered()) {
             return status(404);   // not offered: no transcoder, or MIDI which only exists rendered
         }
         Path file = files.resolve(track.ref());

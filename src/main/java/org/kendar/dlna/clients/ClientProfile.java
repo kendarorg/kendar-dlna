@@ -30,7 +30,8 @@ public record ClientProfile(String id, String description, ProfileMatch match, S
         match = match == null ? new ProfileMatch(null, null, null) : match;
         nativeFormats = nativeFormats == null || nativeFormats.isEmpty() ? EnumSet.noneOf(MediaFormat.class)
                 : EnumSet.copyOf(nativeFormats);
-        nativeFormats.remove(MediaFormat.MIDI);   // MIDI is always rendered
+        nativeFormats.remove(MediaFormat.MIDI);   // MIDI and ABC are always rendered
+        nativeFormats.remove(MediaFormat.ABC);
         nativeFormats = Set.copyOf(nativeFormats);
         resOrder = resOrder == null ? ResOrder.TRANSCODED_FIRST : resOrder;
         transcodeTarget = transcodeTarget == null ? TranscodeTarget.MP3 : transcodeTarget;
@@ -53,7 +54,7 @@ public record ClientProfile(String id, String description, ProfileMatch match, S
      */
     public List<ResKind> resPlan(MediaFormat format) {
         List<ResKind> plan = new ArrayList<>(2);
-        if (format == MediaFormat.MIDI) {
+        if (format == MediaFormat.MIDI || format == MediaFormat.ABC) {
             plan.add(ResKind.TRANSCODED);
         } else if (nativeFormats.contains(format)
                 && !(format == MediaFormat.MP3 && quirks.contains(Mp3Quirk.AVOID_NATIVE_MP3))) {

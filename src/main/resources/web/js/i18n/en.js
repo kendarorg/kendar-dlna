@@ -355,6 +355,9 @@ export const en = {
   'listjson.file.invalid': 'The current sections file cannot be read ({error}). Saving replaces it.',
   'listjson.file.conflict': 'The sections file was changed by someone else since you opened it.',
 
+  'settings.visibility': 'Visibility',
+  'settings.hidden': 'Hide this directory',
+  'settings.hidden.help': 'The directory and everything below it disappear from DLNA, the library, search, shuffle and the views. The admin pages still show it, so it can be shown again here.',
   'settings.split': 'Cue sheets and chapters',
   'settings.keepWholeFiles': 'Keep the whole files listed',
   'settings.keepWholeFiles.help': 'A file described by a cue sheet or chapters is shown as an album of tracks and the whole file is hidden. Tick this to also list the whole file next to that album.',

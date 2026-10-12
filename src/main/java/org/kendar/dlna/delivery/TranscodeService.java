@@ -83,7 +83,7 @@ public final class TranscodeService implements PrefetchTarget {
 
     /** Whether files of the format can be offered as MP3 / LPCM at all. */
     public boolean canTranscode(Format format) {
-        return enabled && (format != Format.MIDI || transcoder.midiAvailable());
+        return enabled && (!format.rendered() || transcoder.midiAvailable());
     }
 
     private static SourceFormat sourceFormat(Format f) {
@@ -94,12 +94,12 @@ public final class TranscodeService implements PrefetchTarget {
 
     /** The sample rate and count of a transcode source when known without reading the file. */
     public Optional<SourceLength> knownSource(Track t) {
+        if (t.format().rendered()) {
+            return t.sampleCount() > 0 ? Optional.of(new SourceLength(MIDI_RATE, t.sampleCount())) : Optional.empty();
+        }
         if (t.isSegment()) {
             return t.sampleRate() > 0 && t.sampleCount() > 0
                     ? Optional.of(new SourceLength(t.sampleRate(), t.sampleCount())) : Optional.empty();
-        }
-        if (t.format() == Format.MIDI) {
-            return t.sampleCount() > 0 ? Optional.of(new SourceLength(MIDI_RATE, t.sampleCount())) : Optional.empty();
         }
         if (t.sampleCount() > 0 && t.sampleRate() > 0) {
             return Optional.of(new SourceLength(t.sampleRate(), t.sampleCount()));
@@ -132,7 +132,7 @@ public final class TranscodeService implements PrefetchTarget {
 
     private String cacheKey(Track t, StreamVariant v) {
         return TranscodeCache.key(PIPELINE, t.ref().qualified(), t.mtime(), t.size(), v.path(),
-                t.format() == Format.MIDI ? midiStamp
+                t.format().rendered() ? midiStamp
                 : t.isSegment() ? t.segment().startSample() + "-" + t.segment().endSample() : "");
     }
 
@@ -156,7 +156,7 @@ public final class TranscodeService implements PrefetchTarget {
     public StreamBody body(Track t, Path file, StreamVariant requested) throws IOException {
         StreamVariant v = requested.resolved(defaultBitrateKbps);
         String key = cacheKey(t, v);
-        if (t.format() == Format.MIDI) {
+        if (t.format().rendered()) {
             Path cached = cache.getOrCreate(key, cacheSource(t, v), (out, cancelled) -> produce(t, file, v, out,
                     cancelled), () -> false);
             return new StreamBody.FileBody(cached, Files.size(cached), mimeOf(v, MIDI_RATE), featuresOf(v));
@@ -238,8 +238,10 @@ public final class TranscodeService implements PrefetchTarget {
     private void produce(Track t, Path file, StreamVariant v, OutputStream out, BooleanSupplier cancelled)
             throws IOException {
         InputStream in;
-        if (t.format() == Format.MIDI) {
-            Transcoder.Rendered r = transcoder.renderMidi(file);
+        if (t.format().rendered()) {
+            Transcoder.Rendered r = t.format() == Format.ABC
+                    ? transcoder.renderAbc(file, t.isSegment() ? t.segment().index() : 1)
+                    : transcoder.renderMidi(file);
             sink.rendered(t, r.frames(), Math.round(r.frames() * 1000.0 / MIDI_RATE));
             in = v.kind() == StreamVariant.Kind.LPCM ? Transcoder.openLpcm(r, 0)
                     : Transcoder.openMp3(r, v.bitrateKbps(), 0);

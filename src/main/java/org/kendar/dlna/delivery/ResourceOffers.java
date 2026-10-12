@@ -48,7 +48,7 @@ public final class ResourceOffers {
         List<Offer> out = new ArrayList<>(2);
         for (ResKind kind : profile.resPlan(mf)) {
             if (kind == ResKind.NATIVE) {
-                if (t.format() != Format.MIDI && !t.isSegment()) {
+                if (!t.format().rendered() && !t.isSegment()) {
                     out.add(nativeOffer(t));
                 }
             } else if (canTranscode) {
@@ -59,7 +59,7 @@ public final class ResourceOffers {
             if (canTranscode) {
                 out.add(transcodedOffer(t, profile));   // virtual tracks only exist transcoded
             }
-        } else if (out.isEmpty() && t.format() != Format.MIDI) {
+        } else if (out.isEmpty() && !t.format().rendered()) {
             out.add(nativeOffer(t));   // never leave a playable item without any res
         }
         return out;
@@ -86,9 +86,9 @@ public final class ResourceOffers {
         long size = src.map(s -> TranscodeService.lengthOf(s, resolved)).orElse(0L);
         long duration = src.map(s -> Math.round(s.samples() * 1000.0 / s.sampleRate())).orElse(0L);
         if (duration <= 0) {
-            duration = t.format() == Format.MIDI && t.renderedMillis() > 0 ? t.renderedMillis() : t.durationMillis();
+            duration = t.format().rendered() && t.renderedMillis() > 0 ? t.renderedMillis() : t.durationMillis();
         }
-        int rate = t.format() == Format.MIDI ? 48_000 : (src.isPresent() ? src.get().sampleRate() : t.sampleRate());
+        int rate = t.format().rendered() ? 48_000 : (src.isPresent() ? src.get().sampleRate() : t.sampleRate());
         if (lpcm) {
             return new Offer(v, LpcmStream.mimeType(rate), MediaTypes.lpcmProtocolInfo(rate), size, duration,
                     rate * 4L, rate, 2);

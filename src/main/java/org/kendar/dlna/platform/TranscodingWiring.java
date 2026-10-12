@@ -6,6 +6,8 @@ import java.util.logging.Logger;
 
 import org.kendar.dlna.ingestion.CompositeTagReader;
 import org.kendar.dlna.ingestion.JAudioTaggerReader;
+import org.kendar.dlna.ingestion.AbcFile;
+import org.kendar.dlna.ingestion.AbcTagReader;
 import org.kendar.dlna.ingestion.MidiTagReader;
 import org.kendar.dlna.ingestion.OpusTagReader;
 import org.kendar.dlna.ingestion.TagReader;
@@ -21,7 +23,7 @@ import org.kendar.dlna.transcoding.Transcoder;
 final class TranscodingWiring {
 
     /** Bump when the set of readable formats changes: forces one full scan to re-evaluate unsupported files. */
-    private static final String CAPABILITY_VERSION = "v9";
+    private static final String CAPABILITY_VERSION = "v10";
 
     private static final Logger LOG = Logger.getLogger(TranscodingWiring.class.getName());
 
@@ -55,13 +57,23 @@ final class TranscodingWiring {
                 rate * tc.midiMaxTailSeconds(), rate / 20);
         MidiRenderer renderer = new MidiRenderer(sf.get().file(), policy, "linear");
         LOG.info("MIDI rendering enabled with SoundFont " + sf.get().file());
-        return new TranscodingWiring(new Transcoder(renderer), true, sf.get().stamp(), "");
+        return new TranscodingWiring(new Transcoder(renderer, TranscodingWiring::loadAbcTune), true, sf.get().stamp(), "");
+    }
+
+    /** The n-th tune (from 1) of an ABC file as MIDI. */
+    private static javax.sound.midi.Sequence loadAbcTune(Path file, int tune)
+            throws java.io.IOException, javax.sound.midi.InvalidMidiDataException {
+        java.util.List<AbcFile.Tune> tunes = AbcFile.parse(file);
+        if (tune < 1 || tune > tunes.size()) {
+            throw new java.io.IOException("no tune " + tune + " in " + file.getFileName());
+        }
+        return tunes.get(tune - 1).sequence();
     }
 
     /** Tags and basic properties of all formats this installation can serve (no sample-count probing). */
     TagReader plainTagReader() {
         return new CompositeTagReader(new JAudioTaggerReader(), new OpusTagReader(),
-                new MidiTagReader(midiAvailable, midiReason));
+                new MidiTagReader(midiAvailable, midiReason), new AbcTagReader(midiAvailable, midiReason));
     }
 
     /** The tag reader for all formats this installation can serve, with exact sample counts. */

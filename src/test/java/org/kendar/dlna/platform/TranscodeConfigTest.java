@@ -142,7 +142,7 @@ class TranscodeConfigTest {
             assertThat(reader.unsupportedReason(Format.MIDI)).contains("MIDI rendering unavailable")
                     .contains("SoundFont");
         }
-        assertThat(none.fingerprintSuffix()).startsWith("|v9");
+        assertThat(none.fingerprintSuffix()).startsWith("|v10");
 
         // a configured file that exists enables MIDI (any file: the loader reads it lazily at the first render)
         Path sf = Files.write(dir.resolve("x.sf2"), new byte[10]);

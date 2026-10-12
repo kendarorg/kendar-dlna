@@ -118,6 +118,13 @@ public final class SettingsParser {
                 }
                 keepWhole = n.get("keepWholeFiles").asBoolean();
             }
+            boolean hidden = false;
+            if (n.has("hidden") && !n.get("hidden").isNull()) {
+                if (!n.get("hidden").isBoolean()) {
+                    return failure("hidden must be true or false");
+                }
+                hidden = n.get("hidden").asBoolean();
+            }
             Integer bucket = null;
             if (n.has("bucketThreshold") && !n.get("bucketThreshold").isNull()) {
                 if (!n.get("bucketThreshold").isInt() || n.get("bucketThreshold").asInt() < 1) {
@@ -126,7 +133,7 @@ public final class SettingsParser {
                 bucket = n.get("bucketThreshold").asInt();
             }
             return new Result(new DirectorySettings(sort, order, album, random, views, recent, displayName,
-                    keepWhole, bucket), null);
+                    keepWhole, bucket, hidden), null);
         } catch (IOException | RuntimeException e) {
             return failure("malformed JSON: " + e.getMessage().lines().findFirst().orElse(""));
         }

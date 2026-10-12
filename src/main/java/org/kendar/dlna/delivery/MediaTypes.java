@@ -19,6 +19,7 @@ public final class MediaTypes {
             case WAV -> "audio/wav";
             case AIFF -> "audio/aiff";
             case MIDI -> "audio/midi";
+            case ABC -> "text/vnd.abc";
             case AAC, ALAC -> "audio/mp4";
             case ADTS -> "audio/aac";
         };

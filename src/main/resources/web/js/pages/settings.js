@@ -40,6 +40,7 @@ function settingsForm(folder) {
     random: s.random,
     recent: s.recent || 0,
     keepWholeFiles: !!s.keepWholeFiles,
+    hidden: !!s.hidden,
     bucketThreshold: s.bucketThreshold == null ? '' : s.bucketThreshold,
     views: s.views.slice(),
     storedOrder: s.order.slice()
@@ -67,6 +68,7 @@ function settingsBody(form) {
     random: numberOrNull(form.random) || 0,
     recent: numberOrNull(form.recent) || 0,
     keepWholeFiles: !!form.keepWholeFiles,
+    hidden: !!form.hidden,
     bucketThreshold: numberOrNull(form.bucketThreshold),
     views: form.views
   };
@@ -221,6 +223,12 @@ export const SettingsPage = {
             <label>Disc number <input type="number" min="0" max="999" v-model="form.album.discNumber"></label>
             <label>Disc total <input type="number" min="0" max="999" v-model="form.album.discTotal"></label>
           </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>{{ $t('settings.visibility') }}</legend>
+          <label class="inline"><input type="checkbox" v-model="form.hidden" id="hidden-directory"> {{ $t('settings.hidden') }}</label>
+          <p class="muted">{{ $t('settings.hidden.help') }}</p>
         </fieldset>
 
         <fieldset>

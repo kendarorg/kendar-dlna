@@ -154,7 +154,8 @@ public final class CatalogService {
             return false;
         }
         Track updated = new Track(t.ref(), t.mtime(), t.size(), t.format(), t.tags(), t.durationMillis(),
-                t.bitrateKbps(), t.sampleRate(), t.channels(), t.embeddedArt(), sampleCount, renderedMillis, t.addedAt());
+                t.bitrateKbps(), t.sampleRate(), t.channels(), t.embeddedArt(), sampleCount, renderedMillis, t.addedAt(),
+                t.segment());
         List<Track> tracks = new ArrayList<>(cur.tracks());
         tracks.replaceAll(x -> x.ref().equals(t.ref()) ? updated : x);
         Snapshot candidate = new Snapshot(cur.updateId(), cur.scannedAt(), new ArrayList<>(cur.allFolders()),

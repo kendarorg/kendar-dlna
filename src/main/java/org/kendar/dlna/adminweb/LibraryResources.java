@@ -109,7 +109,7 @@ final class LibraryResources {
     private Map<String, Object> node(Snapshot snap, Folder f) {
         List<Object> kids = new ArrayList<>();
         List<Track> tracks = new ArrayList<>();
-        for (Child c : snap.children(f.ref())) {
+        for (Child c : snap.allChildren(f.ref())) {
             switch (c) {
                 case Child.FolderChild fc -> kids.add(node(snap, fc.folder()));
                 case Child.TrackChild tc -> tracks.add(tc.track());
@@ -134,7 +134,7 @@ final class LibraryResources {
         List<Object> children = new ArrayList<>();
         List<Track> tracks = new ArrayList<>();
         int folders = 0;
-        for (Child c : snap.children(f.ref())) {
+        for (Child c : snap.allChildren(f.ref())) {
             switch (c) {
                 case Child.FolderChild fc -> {
                     folders++;
@@ -145,7 +145,7 @@ final class LibraryResources {
                     m.put("settingsError", fc.folder().settingsError() != null);
                     m.put("listError", fc.folder().listError() != null);
                     int subTracks = 0;
-                    for (Child gc : snap.children(fc.folder().ref())) {
+                    for (Child gc : snap.allChildren(fc.folder().ref())) {
                         if (gc instanceof Child.TrackChild) {
                             subTracks++;
                         }

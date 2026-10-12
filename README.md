@@ -29,7 +29,7 @@ search, MP3 transcoding of formats the renderer cannot play, MIDI rendering, and
 database, no native libraries. The design is in `plan.md`.
 
 * Formats: MP3, OGG Vorbis, FLAC, WAV, AIFF, Opus, AAC-LC (`.m4a` `.mp4` and raw ADTS `.aac`), Apple Lossless (ALAC,
-  `.m4a`), MIDI (`.mid` `.midi` `.kar`). Others (HE-AAC, WMA, APE, WavPack, DSD `.dsf` `.dff`, `.m4b`, ...) are listed in
+  `.m4a`), MIDI (`.mid` `.midi` `.kar`), ABC notation (`.abc`, converted to MIDI and rendered like MIDI; a file with several `X:` tunes becomes one virtual track per tune, tags are read-only). Others (HE-AAC, WMA, APE, WavPack, DSD `.dsf` `.dff`, `.m4b`, ...) are listed in
   the admin page as *unsupported*, with the reason, and are not exposed through DLNA.
 * Out of scope: authentication on the DLNA side, gapless playback, client queues, filesystem watching.
 

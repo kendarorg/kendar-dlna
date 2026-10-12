@@ -230,7 +230,7 @@ public final class LibraryQuery {
         EffectiveTrack e = EffectiveTrack.of(t, snap.folder(t.parentRef())
                 .map(Folder::settings).orElse(org.kendar.dlna.catalog.DirectorySettings.DEFAULT));
         String format = lower(t.format());
-        boolean nativeOk = t.format() != Format.MIDI && !t.isSegment() && formats.contains(format);
+        boolean nativeOk = !t.format().rendered() && !t.isSegment() && formats.contains(format);
         return obj("path", t.ref().qualified(), "name", t.fileName(), "title", DisplayNames.trackTitle(t),
                 "artist", t.tags().artist(), "album", e.album(), "albumArtist", e.albumArtist(), "genre", e.genre(),
                 "composer", t.tags().composer(), "transcriber", t.tags().transcriber(), "year", e.year(), "trackNo", t.tags().trackNo(), "discNo", e.discNo(),
@@ -573,7 +573,7 @@ public final class LibraryQuery {
         Set<String> roots = rootsOf(user, snap);
         List<Track> sorted = memoized(snap, "recent|" + scopeKey(roots), () -> {
             List<Track> l = new ArrayList<>();
-            for (Track t : snap.tracks()) {
+            for (Track t : snap.visibleTracks()) {
                 if (roots.contains(t.ref().root())) {
                     l.add(t);
                 }

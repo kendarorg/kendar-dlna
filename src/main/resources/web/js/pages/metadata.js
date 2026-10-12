@@ -113,7 +113,8 @@ export const MetadataPage = {
     /** Listen to a track (the directory plays on from it); the same button pauses the track that is playing. */
     listen(c) {
       if (c.track.path === this.playingPath) { this.player.toggle(); return; }
-      const tracks = this.tracks.map(x => withPlayability(x.track, Api.formats));
+      // ephemeral: maintenance listening is never reported to the history nor saved as the stored queue
+      const tracks = this.tracks.map(x => Object.assign({}, withPlayability(x.track, Api.formats), { ephemeral: true }));
       playList(tracks, { start: Math.max(0, this.tracks.indexOf(c)) });
     },
     /** No selected file can hold this field (e.g. album for MIDI only): the input is disabled. */

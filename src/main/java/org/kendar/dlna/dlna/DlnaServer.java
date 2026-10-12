@@ -100,7 +100,7 @@ public final class DlnaServer {
     static ProtocolInfos sourceProtocols() {
         ProtocolInfos infos = new ProtocolInfos();
         for (Format f : Format.values()) {
-            if (f != Format.MIDI) {   // MIDI is only offered rendered
+            if (!f.rendered()) {   // MIDI and ABC are only offered rendered
                 infos.add(new ProtocolInfo(MediaTypes.protocolInfo(f)));
             }
         }

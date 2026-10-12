@@ -30,6 +30,8 @@ public final class Snapshot {
     private final Map<String, Folder> folderById;
     private final Map<String, Track> trackById;
     private final Map<RootRef, List<Child>> children;
+    private final Map<RootRef, List<Child>> allChildren;
+    private final List<Track> visibleTracks;
     private final Map<RootRef, List<String>> missingOrderEntries;
     private final List<ResolvedPlaylist> playlists;
     private final Map<String, ResolvedPlaylist> playlistById;
@@ -103,11 +105,14 @@ public final class Snapshot {
             subTracks.computeIfAbsent(t.parentRef(), k -> new ArrayList<>()).add(t);
         }
         Map<RootRef, List<Child>> ch = new HashMap<>();
+        Map<RootRef, List<Child>> all = new HashMap<>();
         Map<RootRef, List<String>> missing = new HashMap<>();
         for (Folder f : fm.values()) {
             ChildSorter.Result r = ChildSorter.sort(f.settings(),
                     subFolders.getOrDefault(f.ref(), List.of()), subTracks.getOrDefault(f.ref(), List.of()));
-            ch.put(f.ref(), List.copyOf(r.children()));
+            all.put(f.ref(), List.copyOf(r.children()));
+            ch.put(f.ref(), r.children().stream()
+                    .filter(c -> !(c instanceof Child.FolderChild fc && fc.folder().settings().hidden())).toList());
             if (!r.missing().isEmpty()) {
                 missing.put(f.ref(), List.copyOf(r.missing()));
             }
@@ -119,6 +124,9 @@ public final class Snapshot {
         this.folderById = Collections.unmodifiableMap(fid);
         this.trackById = Collections.unmodifiableMap(tid);
         this.children = Collections.unmodifiableMap(ch);
+        this.allChildren = Collections.unmodifiableMap(all);
+        Map<RootRef, Boolean> hiddenMemo = new HashMap<>();
+        this.visibleTracks = this.tracks.stream().filter(t -> !hidden(fm, t.parentRef(), hiddenMemo)).toList();
         this.missingOrderEntries = Collections.unmodifiableMap(missing);
 
         java.util.Set<RootRef> unsupportedRefs = new java.util.HashSet<>();
@@ -147,6 +155,8 @@ public final class Snapshot {
         this.folderById = o.folderById;
         this.trackById = o.trackById;
         this.children = o.children;
+        this.allChildren = o.allChildren;
+        this.visibleTracks = o.visibleTracks;
         this.missingOrderEntries = o.missingOrderEntries;
         this.playlists = o.playlists;
         this.playlistById = o.playlistById;
@@ -255,6 +265,27 @@ public final class Snapshot {
     /** Sorted direct children of a directory (empty for unknown refs). */
     public List<Child> children(RootRef folder) {
         return children.getOrDefault(folder, List.of());
+    }
+
+    /** Direct children including the directories hidden by their settings (for the admin). */
+    public List<Child> allChildren(RootRef folder) {
+        return allChildren.getOrDefault(folder, List.of());
+    }
+
+    /** The tracks outside every hidden directory. */
+    public List<Track> visibleTracks() {
+        return visibleTracks;
+    }
+
+    private static boolean hidden(Map<RootRef, Folder> fm, RootRef ref, Map<RootRef, Boolean> memo) {
+        Boolean known = memo.get(ref);
+        if (known != null) {
+            return known;
+        }
+        Folder f = fm.get(ref);
+        boolean h = f != null && (f.settings().hidden() || !f.isRoot() && hidden(fm, ref.parent(), memo));
+        memo.put(ref, h);
+        return h;
     }
 
     /** Entries of the folder's explicit {@code order} that matched no child. */

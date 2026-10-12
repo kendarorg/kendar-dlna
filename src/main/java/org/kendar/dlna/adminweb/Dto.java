@@ -36,7 +36,7 @@ final class Dto {
                 "album", obj("title", a.title(), "albumArtist", a.albumArtist(), "year", a.year(), "genre", a.genre(),
                         "discNumber", a.discNumber(), "discTotal", a.discTotal()),
                 "random", s.random(), "recent", s.recent(), "views", views, "displayName", s.displayName(),
-                "keepWholeFiles", s.keepWholeFiles(), "bucketThreshold", s.bucketThreshold());
+                "keepWholeFiles", s.keepWholeFiles(), "bucketThreshold", s.bucketThreshold(), "hidden", s.hidden());
     }
 
     /** A track with its tags; {@code parent} (nullable) is the settings of its directory for the sync marker. */
@@ -66,6 +66,6 @@ final class Dto {
 
     static Map<String, Object> folderRef(Folder f) {
         return obj("path", f.ref().qualified(), "name", f.ref().name(), "displayName", DisplayNames.folderTitle(f),
-                "virtual", f.isVirtual());
+                "virtual", f.isVirtual(), "hidden", f.settings().hidden());
     }
 }

@@ -146,7 +146,7 @@ public final class Prefetcher implements AutoCloseable {
 
     /** Which form to prefetch for the next item: null when the client plays it natively anyway. */
     private StreamVariant variantFor(Track next, StreamVariant current) {
-        if (next.format() == Format.MIDI) {
+        if (next.format().rendered()) {
             return current.transcoded() ? current : StreamVariant.mp3(0);
         }
         if (!current.transcoded() || next.format() == Format.MP3) {

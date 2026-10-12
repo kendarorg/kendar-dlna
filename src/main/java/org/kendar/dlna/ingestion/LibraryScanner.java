@@ -155,7 +155,8 @@ public class LibraryScanner {
                         Format actual = meta.format() != null ? meta.format() : p.format;
                         Optional<EmbeddedSections.Found> emb = virtualAlbums && !p.skipSplit && p.cue == null
                                 ? EmbeddedSections.read(p.file, actual) : Optional.empty();
-                        return new Read(meta, emb.orElse(null));
+                        List<AbcFile.Tune> tunes = actual == Format.ABC ? AbcFile.parse(p.file) : null;
+                        return new Read(meta, emb.orElse(null), tunes);
                     } finally {
                         permits.release();
                     }
@@ -248,7 +249,7 @@ public class LibraryScanner {
     }
 
     /** Result of reading one file: its tags and the sections embedded in it (null = none). */
-    private record Read(TrackMeta meta, EmbeddedSections.Found embedded) {
+    private record Read(TrackMeta meta, EmbeddedSections.Found embedded, List<AbcFile.Tune> tunes) {
     }
 
     /**
@@ -263,6 +264,10 @@ public class LibraryScanner {
     }
 
     private VirtualAlbums.Result split(Pending p, Read read) {
+        if (p.format == Format.ABC) {
+            return read.tunes() == null ? null : AbcAlbums.build(new VirtualAlbums.Source(p.ref, p.mtime, p.size,
+                    p.addedAt, p.format, read.meta()), read.tunes(), p.list, p.dir);
+        }
         CueSheet sheet;
         CueSheet.CueFile entry;
         String origin;
@@ -360,7 +365,7 @@ public class LibraryScanner {
                         if (oldAlbum != null && !force && !listChanged && oldAlbum.split().sourceMtime() == mtime
                                 && oldAlbum.split().sourceSize() == attrs.size()) {
                             String h = oldAlbum.split().hash();
-                            splitReuse = cue != null ? h.equals("cue:" + cue.hash()) : h.startsWith("emb:");
+                            splitReuse = cue != null ? h.equals("cue:" + cue.hash()) : h.startsWith("emb:") || h.startsWith("abc:");
                         }
                         if (splitReuse) {
                             folders.add(VirtualAlbums.refresh(oldAlbum, dl.folder()));

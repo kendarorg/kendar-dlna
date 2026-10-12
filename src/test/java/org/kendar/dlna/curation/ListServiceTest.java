@@ -145,10 +145,12 @@ class ListServiceTest {
     }
 
     @Test
-    void tagEditsKeepTheListValuesOnTop() {
+    void tagEditsUpdateTheListValuesTheyOverride() {
         lists.save(album, List.of(e("04 four.mid", "Listed artist", null, "Listed title", null)), ListService.NO_FILE);
         TagService tags = new TagService(lib.catalog, lib.files, new PerFormatTagWriter(), lib.reader);
         tags.writeOne(four, new TagEdit("Edited", null, null, null, null, null, null, null, null));
-        assertThat(DisplayNames.trackTitle(lib.catalog.current().track(four).orElseThrow())).isEqualTo("Listed title");
+        assertThat(DisplayNames.trackTitle(lib.catalog.current().track(four).orElseThrow())).isEqualTo("Edited");
+        assertThat(lists.read(album).entries().get(0).title()).isEqualTo("Edited");
+        assertThat(lists.read(album).entries().get(0).author()).isEqualTo("Listed artist");
     }
 }

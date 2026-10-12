@@ -36,8 +36,9 @@ export function createPlayReporter(deps) {
 
   /** Returns true when the play was queued (it qualified). */
   function report(play) {
-    if (!play || !play.path || !qualifies(play.playedSeconds, play.durationSeconds)) return false;
-    queue.push({ path: play.path, playedSeconds: Math.round(play.playedSeconds), durationSeconds: Math.round(play.durationSeconds || 0), attempts: 0 });
+    if (!play || !play.path) return false;
+    if (!(play.force && Number(play.playedSeconds) > 0) && !qualifies(play.playedSeconds, play.durationSeconds)) return false;
+    queue.push({ path: play.path, playedSeconds: Math.round(play.playedSeconds), durationSeconds: Math.round(play.durationSeconds || 0), force: !!play.force, attempts: 0 });
     while (queue.length > maxQueue) { queue.shift(); dropped++; }
     schedule();
     return true;
@@ -47,7 +48,9 @@ export function createPlayReporter(deps) {
     while (queue.length) {
       const item = queue[0];
       try {
-        await deps.send({ path: item.path, playedSeconds: item.playedSeconds, durationSeconds: item.durationSeconds });
+        await deps.send(item.force
+          ? { path: item.path, playedSeconds: item.playedSeconds, durationSeconds: item.durationSeconds, force: true }
+          : { path: item.path, playedSeconds: item.playedSeconds, durationSeconds: item.durationSeconds });
         queue.shift();
         sent++;
       } catch (e) {

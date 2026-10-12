@@ -112,3 +112,14 @@ test('the queue is bounded and clear() forgets everything', () => {
   assert.equal(rep.pending(), 0);
   assert.equal(c.count(), 0);
 });
+
+test('a forced report counts below the threshold but never with zero seconds', async () => {
+  const c = clock();
+  const sent = [];
+  const rep = createPlayReporter({ send: async r => { sent.push(r); }, setTimer: c.setTimer, clearTimer: c.clearTimer });
+  assert.equal(rep.report({ path: 'M/a.mp3', playedSeconds: 5, durationSeconds: 300 }), false);
+  assert.equal(rep.report({ path: 'M/a.mp3', playedSeconds: 0, durationSeconds: 300, force: true }), false);
+  assert.equal(rep.report({ path: 'M/a.mp3', playedSeconds: 5, durationSeconds: 300, force: true }), true);
+  await rep.flush();
+  assert.deepEqual(sent, [{ path: 'M/a.mp3', playedSeconds: 5, durationSeconds: 300, force: true }]);
+});

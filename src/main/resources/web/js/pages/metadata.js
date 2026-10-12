@@ -1,6 +1,10 @@
 /* Metadata editor: single and batch tag edits for the tracks of one directory. */
 import { Api } from '../api.js';
 import { formatDuration } from '../core/format.js';
+import { withPlayability } from '../core/track.js';
+import { Icon } from '../components/icons.js';
+import { player } from '../player/index.js';
+import { playList } from '../actions.js';
 
 const TAG_FIELDS = [
   { key: 'title', label: 'Title', number: false },
@@ -78,6 +82,8 @@ function buildEdit(single, form, original, clear, touched) {
 
 export const MetadataPage = {
   name: 'MetadataPage',
+  components: { Icon },
+  setup() { return { player: player }; },
   data() {
     return {
       folder: null, selected: [], form: emptyForm(), original: emptyForm(), clear: {}, touched: {}, fields: TAG_FIELDS,
@@ -91,7 +97,9 @@ export const MetadataPage = {
     selectedTracks() { return this.tracks.filter(c => this.selected.includes(c.path)); },
     single() { return this.selected.length === 1; },
     edit() { return buildEdit(this.single, this.form, this.original, this.clear, this.touched); },
-    changed() { return Object.keys(this.edit).length > 0; }
+    changed() { return Object.keys(this.edit).length > 0; },
+    playingPath() { const c = this.player.current; return c && c.track ? c.track.path : null; },
+    isPlaying() { return this.player.state.status === 'playing' || this.player.state.status === 'loading'; }
   },
   watch: {
     selected(now, before) {
@@ -102,6 +110,12 @@ export const MetadataPage = {
   created() { this.load(this.$route.query.t); },
   methods: {
     formatDuration,
+    /** Listen to a track (the directory plays on from it); the same button pauses the track that is playing. */
+    listen(c) {
+      if (c.track.path === this.playingPath) { this.player.toggle(); return; }
+      const tracks = this.tracks.map(x => withPlayability(x.track, Api.formats));
+      playList(tracks, { start: Math.max(0, this.tracks.indexOf(c)) });
+    },
     /** No selected file can hold this field (e.g. album for MIDI only): the input is disabled. */
     fieldDisabled(key) {
       return this.selectedTracks.length > 0 && this.selectedTracks.every(c => !(c.track.editableFields || []).includes(key));
@@ -201,11 +215,13 @@ export const MetadataPage = {
             <span class="muted">{{ selected.length }} selected</span>
           </div>
           <table>
-            <thead><tr><th></th><th>#</th><th>Title</th><th>Artist</th><th>Album</th><th>Length</th></tr></thead>
+            <thead><tr><th></th><th></th><th>#</th><th>Title</th><th>Artist</th><th>Album</th><th>Length</th></tr></thead>
             <tbody>
               <tr v-for="c in tracks" :key="c.path" :class="{ disabled: !c.track.editable }">
                 <td><input type="checkbox" :value="c.path" v-model="selected" :disabled="!c.track.editable"
                            :aria-label="'Select ' + c.name"></td>
+                <td><button type="button" class="icon-btn" :title="$t('player.play')" :aria-label="$t('player.play') + ' ' + c.name"
+                            @click="listen(c)"><icon :name="c.track.path === playingPath && isPlaying ? 'pause' : 'play'"></icon></button></td>
                 <td>{{ c.track.trackNo || '' }}</td>
                 <td>{{ c.track.displayTitle }}<div class="muted small">{{ c.name }}</div></td>
                 <td>{{ c.track.artist }}</td>

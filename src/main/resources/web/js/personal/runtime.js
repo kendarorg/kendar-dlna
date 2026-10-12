@@ -56,23 +56,37 @@ sync.suspend(true);
 
 // ---- player hooks ----
 
+let reportedId = null;     // queue entry id whose play was already reported on pause
+
 player.events.on('trackend', e => {
   if (!e.track) return;
+  if (reportedId !== null && reportedId === player.state.loadedId) { reportedId = null; return; }   // counted on pause
   reporter.report({ path: e.track.path, playedSeconds: e.playedSeconds, durationSeconds: e.durationSeconds });
 });
 player.events.on('queuechange', () => {
   if (personal.resume) dismissResume();
   sync.schedule();
 });
-player.events.on('trackstart', () => { sync.flush().catch(() => {}); });
-player.events.on('state', e => { if (e.status === 'paused' || e.status === 'idle') sync.flush().catch(() => {}); });
+player.events.on('trackstart', () => { reportedId = null; sync.flush().catch(() => {}); });
+player.events.on('state', e => {
+  if (e.status === 'paused' || e.status === 'idle') {
+    // pausing or stopping counts as a play (otherwise it would only count when the user leaves the track)
+    const entry = player.current;
+    const st = player.state;
+    if (entry && st.loadedId === entry.id && reportedId !== entry.id
+        && reporter.report({ path: entry.track.path, playedSeconds: st.position, durationSeconds: st.duration, force: true })) {
+      reportedId = entry.id;
+    }
+    sync.flush().catch(() => {});
+  }
+});
 player.events.on('time', () => { if (!personal.remote) sync.touch(); });   // no passive write over another device's queue
 
 function leave() {
   leaving = true;
   const entry = player.current;
   const st = player.state;
-  if (entry && st.loadedId === entry.id && (st.status === 'playing' || st.status === 'paused')) {
+  if (entry && st.loadedId === entry.id && reportedId !== entry.id && (st.status === 'playing' || st.status === 'paused')) {
     reporter.report({ path: entry.track.path, playedSeconds: st.position, durationSeconds: st.duration });
   }
   reporter.flush().catch(() => {});

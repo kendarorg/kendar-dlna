@@ -678,6 +678,12 @@ public final class PersonalService {
      * Reports a play. It counts after {@value #COUNT_SECONDS} s or 50 % of the track. Rate limited per user.
      */
     public Map<String, Object> reportPlay(User me, String path, double playedSeconds, double durationSeconds) {
+        return reportPlay(me, path, playedSeconds, durationSeconds, false);
+    }
+
+    /** {@code force}: the play counts whatever its length (the user paused or stopped it on purpose). */
+    public Map<String, Object> reportPlay(User me, String path, double playedSeconds, double durationSeconds,
+            boolean force) {
         RootRef ref = parse(path);
         Access.requireRoot(me, ref);
         Snapshot snap = snapshot.get();
@@ -694,7 +700,8 @@ public final class PersonalService {
                         Map.of("retryAfterSeconds", wait));
             }
             s.reports.addLast(now);
-            boolean counts = playedSeconds >= COUNT_SECONDS || (dur > 0 && playedSeconds >= dur * 0.5);
+            boolean counts = (force && playedSeconds > 0) || playedSeconds >= COUNT_SECONDS
+                    || (dur > 0 && playedSeconds >= dur * 0.5);
             if (!counts) {
                 return obj("counted", false);
             }
@@ -712,6 +719,32 @@ public final class PersonalService {
                 s.flushHistory(now);
             }
             return obj("counted", true, "playCount", c[0]);
+        });
+    }
+
+    /** Removes every entry of a track from Recently played (the play count is kept). */
+    public void forgetRecent(User me, String path) {
+        RootRef ref = parse(path);
+        with(me.id(), s -> {
+            History h = s.history();
+            if (h.recent.removeIf(e -> e.getKey().equals(ref.qualified()))) {
+                h.dirty = true;
+                s.flushHistory(now());
+            }
+            return null;
+        });
+    }
+
+    /** Resets the play count of a track: it leaves Most played (its Recently played entries are kept). */
+    public void forgetCount(User me, String path) {
+        RootRef ref = parse(path);
+        with(me.id(), s -> {
+            History h = s.history();
+            if (h.counts.remove(ref.qualified()) != null) {
+                h.dirty = true;
+                s.flushHistory(now());
+            }
+            return null;
         });
     }
 
@@ -766,7 +799,7 @@ public final class PersonalService {
             if (t.isEmpty()) {
                 continue;
             }
-            Map<String, Object> m = obj("path", p, "playedAt", Instant.ofEpochMilli(e.getValue()).toString(),
+            Map<String, Object> m = obj("path", p, "status", "ok", "playedAt", Instant.ofEpochMilli(e.getValue()).toString(),
                     "track", trackJson(snap, t.get()));
             if (counts != null) {
                 m.put("playCount", counts.get(p)[0]);

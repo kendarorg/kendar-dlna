@@ -1,11 +1,11 @@
 {
-  "items" : [ ],
+  "items" : [ "Music/mp3s/fascicolo01.mp3#1", "Music/mp3s/fascicolo01.mp3#2", "Music/mp3s/fascicolo01.mp3#3", "Music/mp3s/fascicolo01.mp3#4", "Music/mp3s/fascicolo01.mp3#5", "Music/mp3s/fascicolo01.mp3#6" ],
   "index" : 0,
-  "positionSeconds" : 0.0,
+  "positionSeconds" : 423.1,
   "shuffle" : false,
   "repeat" : "off",
   "source" : null,
   "deviceId" : "web-sa53l5j4qfzu",
-  "updated" : "2026-10-10T07:50:41.105334100Z",
-  "version" : 8
+  "updated" : "2026-10-12T07:11:49.416930900Z",
+  "version" : 47
 }

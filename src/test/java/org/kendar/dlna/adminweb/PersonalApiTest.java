@@ -486,6 +486,27 @@ class PersonalApiTest {
     }
 
     @Test
+    void aForcedPlayCountsAndEntriesCanBeForgotten() {
+        Client admin = adminClient();
+        Client omar = userClient(admin, "omar", List.of("main", "extra"));
+        assertThat(omar.ok(omar.write("POST", "/me/history", Map.of("path", ONE, "playedSeconds", 3,
+                "durationSeconds", 200, "force", true))).get("counted").asBoolean()).isTrue();
+        assertThat(omar.ok(omar.write("POST", "/me/history", Map.of("path", ONE, "playedSeconds", 0,
+                "durationSeconds", 200, "force", true))).get("counted").asBoolean()).isFalse();
+        JsonNode recent = omar.ok(omar.get("/me/history/recent"));
+        assertThat(recent.get("entries").get(0).get("status").asText()).isEqualTo("ok");
+
+        assertThat(omar.send(ApiRequest.of("DELETE", "/me/history/most-played").withQuery("path", ONE)).status())
+                .isEqualTo(204);
+        assertThat(omar.ok(omar.get("/me/history/most-played")).get("total").asInt()).isZero();
+        assertThat(paths(omar.ok(omar.get("/me/history/recent")).get("entries"))).containsExactly(ONE);
+        assertThat(omar.send(ApiRequest.of("DELETE", "/me/history/recent").withQuery("path", ONE)).status())
+                .isEqualTo(204);
+        assertThat(omar.ok(omar.get("/me/history/recent")).get("total").asInt()).isZero();
+        assertThat(omar.send(ApiRequest.of("DELETE", "/me/history/recent")).status()).isEqualTo(400);
+    }
+
+    @Test
     void historyReportsAreRateLimited() {
         Client admin = adminClient();
         Client lena = userClient(admin, "lena", List.of("main"));

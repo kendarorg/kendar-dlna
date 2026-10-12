@@ -380,14 +380,22 @@ export const HistoryPage = {
       return e.playedAt ? new Date(e.playedAt).toLocaleString() : '';
     },
     play(i) { playList(this.entries.map(e => e.track), { start: i }); },
-    playAll() { if (this.entries.length) playList(this.entries.map(e => e.track), {}); }
+    playAll() { if (this.entries.length) playList(this.entries.map(e => e.track), {}); },
+    async forget(e) {
+      try {
+        await (this.kind === 'most' ? Api.forgetMostPlayed(e.path) : Api.forgetRecent(e.path));
+        const items = this.pager.state.items;
+        const i = items.indexOf(e);
+        if (i >= 0) items.splice(i, 1);
+      } catch (err) { toast(err.message); }
+    }
   },
   template: `
     <section>
       <header class="page-head"><h1>{{ $t(kind === 'most' ? 'nav.mostPlayed' : 'nav.history') }}</h1></header>
       <div class="row"><button type="button" class="primary" :disabled="!entries.length" @click="playAll"><icon name="play"></icon> {{ $t('action.play') }}</button></div>
       <p v-if="pager.state.done && !entries.length" class="muted">{{ $t('history.empty') }}</p>
-      <entry-list :entries="entries" :extra="extra" :numbered="kind === 'most'" @play="play"></entry-list>
+      <entry-list :entries="entries" :extra="extra" :numbered="kind === 'most'" :removable="true" @play="play" @remove="forget"></entry-list>
       <infinite-scroll :pager="pager" :empty-text="''"></infinite-scroll>
     </section>`
 };

@@ -326,9 +326,11 @@ updated, unavailable}`. Items outside the viewer's roots are dropped and `index`
 
 | Method + path | Body | Response |
 |---|---|---|
-| `POST /me/history` | `{path, playedSeconds, durationSeconds?}` | `{counted, playCount?}`; counts when `playedSeconds` >= 30 or >= 50 % of the duration (body, else catalog); `403` outside roots; `429 rate_limited` with `Retry-After` beyond 30 reports/minute/user |
-| `GET /me/history/recent[?distinct=true&offset&limit]` | - | newest first, each track once unless `distinct=false`; entries `{path, playedAt, track}` |
+| `POST /me/history` | `{path, playedSeconds, durationSeconds?, force?}` | `{counted, playCount?}`; counts when `playedSeconds` >= 30 or >= 50 % of the duration (body, else catalog), or when `force` is true and `playedSeconds` > 0 (the player sends it on pause/stop); `403` outside roots; `429 rate_limited` with `Retry-After` beyond 30 reports/minute/user |
+| `GET /me/history/recent[?distinct=true&offset&limit]` | - | newest first, each track once unless `distinct=false`; entries `{path, status: "ok", playedAt, track}` |
 | `GET /me/history/most-played[?offset&limit]` | - | by play count desc; entries add `playCount` |
+| `DELETE /me/history/recent?path=` | - | `204`; removes the track from Recently played (the play count stays) |
+| `DELETE /me/history/most-played?path=` | - | `204`; resets the track's play count, so it leaves Most played |
 
 The history keeps the last 1000 plays plus a play count per track; writes are batched (flushed after 5 s, on idle
 eviction and at shutdown).

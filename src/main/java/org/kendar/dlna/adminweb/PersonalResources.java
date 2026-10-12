@@ -239,7 +239,22 @@ final class PersonalResources {
                 throw ApiException.badRequest("path is required");
             }
             return ApiResponse.ok(personal.reportPlay(user, b.get("path").asText(),
-                    b.path("playedSeconds").asDouble(0), b.path("durationSeconds").asDouble(0)));
+                    b.path("playedSeconds").asDouble(0), b.path("durationSeconds").asDouble(0),
+                    b.path("force").asBoolean(false)));
+        }
+        if (seg.size() == 1 && req.method().equals("DELETE")) {
+            String p = req.query().get("path");
+            if (p == null || p.isBlank()) {
+                throw ApiException.badRequest("path is required");
+            }
+            switch (seg.get(0)) {
+                case "recent" -> personal.forgetRecent(user, p);
+                case "most-played" -> personal.forgetCount(user, p);
+                default -> {
+                    return null;
+                }
+            }
+            return ApiResponse.noContent();
         }
         if (seg.size() == 1 && req.isRead()) {
             return switch (seg.get(0)) {

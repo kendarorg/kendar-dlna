@@ -204,6 +204,8 @@ export const Api = {
   },
   putQueue(payload, options) { return this.request('PUT', '/me/queue', payload, options); },
   reportPlay(report) { return this.post('/me/history', report); },
+  forgetRecent(path) { return this.del('/me/history/recent?' + qs({ path: path })); },
+  forgetMostPlayed(path) { return this.del('/me/history/most-played?' + qs({ path: path })); },
   async recentlyPlayed(params) { return this._decorate(await this.get('/me/history/recent' + (params ? '?' + qs(params) : ''))); },
   async mostPlayed(params) { return this._decorate(await this.get('/me/history/most-played' + (params ? '?' + qs(params) : ''))); },
 

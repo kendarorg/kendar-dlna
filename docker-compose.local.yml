@@ -1,0 +1,37 @@
+# Kendar DLNA music server. Variables come from stack.env (Portainer: "Load variables from .env file" / env fields).
+services:
+  kendar-dlna:
+    build:
+      context: .
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+        SKIP_TESTS: ${SKIP_TESTS:-true}
+    image: ${IMAGE_NAME:-kendar-dlna}:${IMAGE_TAG:-latest}
+    container_name: kendar-dlna
+    # SSDP discovery uses UDP multicast: it needs the host network (Linux hosts only). The HTTP port is
+    # then the one in config.json (network.port, default 8200) on the host itself.
+    network_mode: host
+    restart: unless-stopped
+    # Time for ssdp:byebye and for Jetty to finish in-flight streams.
+    stop_grace_period: 20s
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      JAVA_OPTS: ${JAVA_OPTS:-}
+      KENDAR_PORT: 8205
+    volumes:
+      - ${PLAYLISTS_DIR:?set PLAYLISTS_DIR}:/playlists
+      - ${CONFIG_DIR:?set CONFIG_DIR}:/config
+      - ${DATA_DIR:?set DATA_DIR}:/data
+
+      - /shared/Public/PdfsAndBooks/Favole:/music/favole
+      - /shared/Multimedia/Midi:/music/midi
+      - /shared/Multimedia/Music:/music/mp3
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:$${KENDAR_PORT:-8200}/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s

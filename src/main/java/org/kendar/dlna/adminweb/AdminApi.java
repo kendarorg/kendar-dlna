@@ -58,6 +58,7 @@ public final class AdminApi {
     private final LibraryQueryResources libraryQuery;
     private final PlaylistResources playlists;
     private final OpsResources ops;
+    private final SettingsResources settings;
     private final UserResources userAdmin;
     private final StreamResources stream;
     private final PersonalResources personal;
@@ -81,6 +82,7 @@ public final class AdminApi {
         this.libraryQuery = new LibraryQueryResources(libraryQuery);
         this.playlists = new PlaylistResources(services);
         this.ops = new OpsResources(services);
+        this.settings = new SettingsResources(services);
         this.userAdmin = new UserResources(identity);
         this.personal = new PersonalResources(new org.kendar.dlna.personal.PersonalService(identity,
                 services.catalog()::current, services.clock()));
@@ -190,6 +192,7 @@ public final class AdminApi {
             case "search" -> rest.isEmpty() ? library.search(req) : null;
             case "playlists" -> playlists.handle(req, rest);
             case "shared-playlists" -> personal.moderation(req, rest);
+            case "settings" -> settings.handle(req, rest);
             default -> ops.handle(req, seg);
         };
     }

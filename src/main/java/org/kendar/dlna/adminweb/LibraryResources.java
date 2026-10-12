@@ -80,6 +80,12 @@ final class LibraryResources {
             case "sync-to-tags" -> req.method().equals("POST") ? syncToTags(req) : null;
             case "sync-from-tags" -> req.method().equals("POST")
                     ? syncFromTags(ref(req), !"true".equals(req.query().get("preview"))) : null;
+            case "upload" -> req.method().equals("POST") ? uploadFile(req) : null;
+            case "directory" -> switch (req.method()) {
+                case "POST" -> createDirectory(req);
+                case "DELETE" -> deleteDirectory(req);
+                default -> null;
+            };
             case "art" -> switch (req.method()) {
                 case "GET" -> artFile(req);
                 case "PUT", "POST" -> uploadArt(req);
@@ -95,6 +101,36 @@ final class LibraryResources {
         } catch (IllegalArgumentException e) {
             throw new ApiException(400, "bad_request", "Invalid path: " + req.query().get("path"));
         }
+    }
+
+    /** Starts a rescan of {@code scope}; false when one is already running (the change shows at the next scan). */
+    private boolean rescan(RootRef scope) {
+        try {
+            svc.rescans().rescanFolder(scope);
+            return true;
+        } catch (org.kendar.dlna.ingestion.ScanAlreadyRunningException e) {
+            return false;
+        }
+    }
+
+    /** Raw body = the file; {@code path} = the directory, {@code name} = the file name. */
+    private ApiResponse uploadFile(ApiRequest req) {
+        RootRef dir = ref(req);
+        RootRef file = svc.folders().uploadFile(dir, req.required("name"), req.body());
+        return ApiResponse.ok(Dto.obj("path", file.qualified(), "rescanStarted", rescan(dir)));
+    }
+
+    /** {@code path} = the parent directory, {@code name} = the new directory. */
+    private ApiResponse createDirectory(ApiRequest req) {
+        RootRef parent = ref(req);
+        RootRef dir = svc.folders().createDirectory(parent, req.required("name"));
+        return ApiResponse.ok(Dto.obj("path", dir.qualified(), "rescanStarted", rescan(parent)));
+    }
+
+    /** {@code path} = the directory; {@code recursive=true} is needed when it is not empty. */
+    private ApiResponse deleteDirectory(ApiRequest req) {
+        RootRef parent = svc.folders().deleteDirectory(ref(req), "true".equals(req.query().get("recursive")));
+        return ApiResponse.ok(Dto.obj("parent", parent.qualified(), "rescanStarted", rescan(parent)));
     }
 
     private ApiResponse tree() {
@@ -349,13 +385,38 @@ final class LibraryResources {
             return switch (req.method()) {
                 case "GET" -> track(req);
                 case "PUT" -> writeTrack(req);
+                case "DELETE" -> deleteTrack(req);
                 default -> null;
             };
         }
         if (seg.size() == 1 && seg.get(0).equals("batch") && req.method().equals("POST")) {
             return writeBatch(req);
         }
+        if (seg.size() == 1 && seg.get(0).equals("rename") && req.method().equals("POST")) {
+            return renameTrack(req);
+        }
         return null;
+    }
+
+    /** Deletes the audio file (and its sidecar). Playlist entries pointing to it stay and show as broken. */
+    private ApiResponse deleteTrack(ApiRequest req) {
+        RootRef ref = ref(req);
+        svc.folders().deleteFile(ref);
+        return ApiResponse.ok(Dto.obj("deleted", ref.qualified()));
+    }
+
+    /** Body {@code {"name":"new file name.ext"}}, {@code path} = the file. Admin only (the whole /admin tree is). */
+    private ApiResponse renameTrack(ApiRequest req) {
+        RootRef ref = ref(req);
+        JsonNode name = req.json().get("name");
+        if (name == null || !name.isTextual()) {
+            throw new ApiException(400, "bad_request", "\"name\" is required");
+        }
+        RootRef target = svc.folders().renameFile(ref, name.asText());
+        if (!target.equals(ref)) {
+            svc.playlists().renameSong(ref.qualified(), target.qualified());
+        }
+        return ApiResponse.ok(Dto.obj("path", target.qualified(), "name", target.name()));
     }
 
     private ApiResponse track(ApiRequest req) {

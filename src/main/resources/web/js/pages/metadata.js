@@ -199,6 +199,17 @@ export const MetadataPage = {
         this.prefill(false);
       } catch (e) { this.error = e.message; } finally { this.busy = false; }
     },
+    async rename(c) {
+      const name = window.prompt('Rename file', c.name);
+      if (name === null || !name.trim() || name.trim() === c.name) { return; }
+      this.busy = true; this.error = ''; this.info = '';
+      try {
+        const r = await Api.renameTrack(c.path, name.trim());
+        this.info = 'Renamed to ' + r.name + '.';
+        this.selected = [];
+        await this.load();
+      } catch (e) { this.error = e.message; } finally { this.busy = false; }
+    },
     cancel() { this.prefill(false); }
   },
   template: `
@@ -224,7 +235,8 @@ export const MetadataPage = {
                 <td><button type="button" class="icon-btn" :title="$t('player.play')" :aria-label="$t('player.play') + ' ' + c.name"
                             @click="listen(c)"><icon :name="c.track.path === playingPath && isPlaying ? 'pause' : 'play'"></icon></button></td>
                 <td>{{ c.track.trackNo || '' }}</td>
-                <td>{{ c.track.displayTitle }}<div class="muted small">{{ c.name }}</div></td>
+                <td>{{ c.track.displayTitle }}<div class="muted small">{{ c.name }}
+                  <button type="button" class="icon-btn" title="Rename file" aria-label="Rename file" :disabled="busy" @click="rename(c)"><icon name="edit"></icon></button></div></td>
                 <td>{{ c.track.artist }}</td>
                 <td>{{ c.track.album }}</td>
                 <td>{{ formatDuration(c.track.durationMillis) }}

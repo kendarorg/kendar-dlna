@@ -19,6 +19,10 @@ function pagerFor(fetchPage, limit) {
   return createPager(fetchPage, { limit: limit || PAGE, reactive: reactive });
 }
 
+function storedLayout() {
+  try { return localStorage.getItem('kd.folderLayout') === 'list' ? 'list' : 'tiles'; } catch (e) { return 'tiles'; }
+}
+
 const COMPONENTS = { TrackList, GroupGrid, InfiniteScroll, Cover, Icon };
 
 export const HomePage = {
@@ -71,7 +75,7 @@ export const FoldersPage = {
   name: 'FoldersPage',
   components: COMPONENTS,
   setup() { return { session: session }; },
-  data() { return { roots: null, head: null, pager: null, error: '' }; },
+  data() { return { roots: null, head: null, pager: null, error: '', layout: storedLayout() }; },
   computed: {
     path() { return this.$route.query.p || ''; },
     folders() { return this.pager ? this.pager.state.items.filter(c => c.type === 'folder') : []; },
@@ -100,6 +104,10 @@ export const FoldersPage = {
         return { items: r.children, total: r.total };
       }, 100);
     },
+    setLayout(l) {
+      this.layout = l;
+      try { localStorage.setItem('kd.folderLayout', l); } catch (e) { /* ignore */ }
+    },
     async all() { if (this.pager) await this.pager.loadAll(100); return this.tracks; },
     async playAt(i) { const tracks = await this.all(); playList(tracks, { start: i }); },
     async playAll(shuffle) {
@@ -119,7 +127,7 @@ export const FoldersPage = {
       <p v-if="error" class="banner error">{{ error }}</p>
       <template v-if="!path">
         <header class="page-head"><h1>{{ $t('nav.folders') }}</h1></header>
-        <group-grid v-if="roots && roots.length" :items="roots" mode="folder"></group-grid>
+        <group-grid v-if="roots && roots.length" :items="roots" mode="folder" :layout="layout"></group-grid>
         <p v-else-if="roots" class="muted">{{ $t('folders.noRoots') }}</p>
       </template>
       <template v-else>
@@ -140,7 +148,11 @@ export const FoldersPage = {
             </div>
           </div>
         </header>
-        <group-grid v-if="folders.length" :items="folders" mode="folder"></group-grid>
+        <div v-if="folders.length" class="row layout-toggle" role="group" aria-label="Layout">
+          <button type="button" :class="{ primary: layout === 'tiles' }" :aria-pressed="String(layout === 'tiles')" @click="setLayout('tiles')">Tiles</button>
+          <button type="button" :class="{ primary: layout === 'list' }" :aria-pressed="String(layout === 'list')" @click="setLayout('list')">List</button>
+        </div>
+        <group-grid v-if="folders.length" :items="folders" mode="folder" :layout="layout"></group-grid>
         <track-list v-if="tracks.length" :tracks="tracks" :numbered="true" :show-album="true" @play="playAt"></track-list>
         <infinite-scroll v-if="pager" :key="path" :pager="pager" :empty-text="$t('folders.empty')"></infinite-scroll>
       </template>

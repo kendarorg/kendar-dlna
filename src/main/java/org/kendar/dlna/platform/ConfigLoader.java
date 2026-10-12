@@ -90,6 +90,15 @@ public final class ConfigLoader {
         return new AppConfig(new AppConfig.Library(roots, null, null), null, null);
     }
 
+    /** Checks a config.json tree (parse and the same validation as at start-up); throws on a problem. */
+    public static void validateJson(com.fasterxml.jackson.databind.JsonNode tree) {
+        try {
+            validate(Json.mapper().treeToValue(tree, AppConfig.class));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new ConfigException(e.getOriginalMessage());
+        }
+    }
+
     static void validate(AppConfig cfg) {
         int port = cfg.network().port();
         if (port < 0 || port > 65535) {

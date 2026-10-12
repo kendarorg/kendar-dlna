@@ -110,6 +110,24 @@ public final class PlaylistService {
         return store(new Playlist(cur.key(), cur.name(), songs));
     }
 
+    /** A song file was renamed: every playlist entry of {@code from} (or a section of it) now points to {@code to}. */
+    public synchronized void renameSong(String from, String to) {
+        for (Playlist p : List.copyOf(catalog.current().playlistDefinitions())) {
+            List<String> songs = new ArrayList<>(p.songs());
+            boolean changed = false;
+            for (int i = 0; i < songs.size(); i++) {
+                String s = songs.get(i);
+                if (s.equals(from) || s.startsWith(from + "#")) {
+                    songs.set(i, to + s.substring(from.length()));
+                    changed = true;
+                }
+            }
+            if (changed) {
+                store(new Playlist(p.key(), p.name(), songs));
+            }
+        }
+    }
+
     // ---- helpers ----
 
     private Playlist store(Playlist p) {

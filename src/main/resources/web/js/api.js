@@ -246,6 +246,13 @@ export const Api = {
   artUrl(path, kind, version) { return '/api/v1/admin/folders/art?' + this.q({ path: path, kind: kind, v: version }); },
   track(path) { return this.get('/admin/tracks?' + this.q({ path: path })); },
   saveTrack(path, edit) { return this.put('/admin/tracks?' + this.q({ path: path }), edit); },
+  settingsExport(part) { return this.get('/admin/settings/' + part + '/download'); },
+  settingsImport(part, data) { return this.post('/admin/settings/' + part + '/upload', data); },
+  uploadAudio(dir, file) { return this.request('POST', '/admin/folders/upload?' + this.q({ path: dir, name: file.name }), file, { raw: true }); },
+  createDir(parent, name) { return this.post('/admin/folders/directory?' + this.q({ path: parent, name: name })); },
+  deleteDir(path, recursive) { return this.del('/admin/folders/directory?' + this.q({ path: path, recursive: recursive ? 'true' : 'false' })); },
+  deleteTrack(path) { return this.del('/admin/tracks?' + this.q({ path: path })); },
+  renameTrack(path, name) { return this.post('/admin/tracks/rename?' + this.q({ path: path }), { name: name }); },
   saveTracks(paths, edit) { return this.post('/admin/tracks/batch', { paths: paths, edit: edit }); },
   adminSearch(q, kind, scope) { return this.get('/admin/search?' + this.q({ q: q, kind: kind, scope: scope })); },
 

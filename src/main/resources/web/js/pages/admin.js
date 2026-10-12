@@ -7,6 +7,7 @@ export const AdminPage = {
   data() {
     return {
       scan: null, unsupported: [], invalid: [], streams: null, snapshots: [], version: null,
+      importFailures: [], settingsParts: [{ id: 'library', label: 'Library settings' }, { id: 'server', label: 'Server config' }],
       folderPath: '', forceTags: false, error: '', info: '', busy: false, timer: null
     };
   },
@@ -17,6 +18,37 @@ export const AdminPage = {
   beforeUnmount() { clearInterval(this.timer); },
   methods: {
     formatSize, formatTime,
+    async exportSettings(part) {
+      this.error = ''; this.info = '';
+      try {
+        const data = await Api.settingsExport(part);
+        const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = 'kendar-' + part + '-settings.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) { this.error = e.message; }
+    },
+    async importSettings(part, event) {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file) { return; }
+      this.error = ''; this.info = ''; this.importFailures = [];
+      if (!window.confirm('Import ' + file.name + ' as ' + part + ' settings? Existing settings are overwritten.')) { return; }
+      this.busy = true;
+      try {
+        let data;
+        try { data = JSON.parse(await file.text()); } catch (e) { throw new Error('The file is not valid JSON'); }
+        const r = await Api.settingsImport(part, data);
+        if (part === 'server') {
+          this.info = 'Server config written (previous one: ' + r.backup + '). Restart the server to apply it.';
+        } else {
+          this.importFailures = r.results.filter(x => !x.ok);
+          this.info = 'Imported ' + (r.results.length - r.failed) + ' of ' + r.results.length + ' directory settings.';
+          await this.loadAll();
+        }
+      } catch (e) { this.error = e.message; } finally { this.busy = false; }
+    },
     async loadAll() {
       this.error = '';
       try {
@@ -87,7 +119,20 @@ export const AdminPage = {
       </div>
 
       <div class="card">
-        <h2>Invalid settings.json <span class="badge" :class="{ bad: invalid.length }">{{ invalid.length }}</span></h2>
+        <h2>Export / import settings</h2>
+        <p class="muted">Library settings: the settings.json of every directory (applied immediately, existing ones are overwritten).
+          Server config: config.json without the admin password; written to the config directory, the previous file is kept as config.json.bak and the server must be restarted.
+          Library roots and paths in the server config are machine specific: check them before importing on another host.</p>
+        <div v-for="p in settingsParts" :key="p.id" class="row">
+          <strong>{{ p.label }}</strong>
+          <button type="button" :disabled="busy" @click="exportSettings(p.id)">Export</button>
+          <label class="button"><input type="file" accept="application/json,.json" hidden :disabled="busy" @change="importSettings(p.id, $event)"> Import&hellip;</label>
+        </div>
+        <ul v-if="importFailures.length" class="plain errors"><li v-for="f in importFailures" :key="f.path">{{ f.path }}: {{ f.error }}</li></ul>
+      </div>
+
+      <div class="card">
+        <h2>Invalid settings.json<span class="badge" :class="{ bad: invalid.length }">{{ invalid.length }}</span></h2>
         <p v-if="!invalid.length" class="muted">All settings.json files are valid.</p>
         <table v-else>
           <thead><tr><th>Directory</th><th>Problem</th></tr></thead>

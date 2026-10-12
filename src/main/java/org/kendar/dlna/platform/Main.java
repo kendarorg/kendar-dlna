@@ -185,7 +185,8 @@ public final class Main {
                 transcoding.plainTagReader());
         AdminServices adminServices = new AdminServices(catalog, rescans, tagService,
                 new FolderService(catalog, roots, tagService), new PlaylistService(catalog, playlistsDir), shuffle,
-                activeStreams, cache, () -> prefetcher == null ? 0 : prefetcher.activeJobs(), BuildInfo.load(), clock);
+                activeStreams, cache, () -> prefetcher == null ? 0 : prefetcher.activeJobs(), BuildInfo.load(), clock,
+                configDir, ConfigLoader::validateJson);
         AdminApi adminApi = new AdminApi(adminServices, identity,
                 new LibraryQuery(holder::current, views, artwork),
                 new WebStream(holder::current, roots, streams, transcode, prefetcher, activeStreams));

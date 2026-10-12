@@ -18,5 +18,13 @@ import org.kendar.dlna.shuffle.Shuffle;
  */
 public record AdminServices(CatalogService catalog, RescanService rescans, TagService tags, FolderService folders,
         PlaylistService playlists, Shuffle shuffle, ActiveStreams streams, TranscodeCache cache,
-        IntSupplier prefetchJobs, BuildInfo build, Clock clock) {
+        IntSupplier prefetchJobs, BuildInfo build, Clock clock, java.nio.file.Path configDir,
+        java.util.function.Consumer<com.fasterxml.jackson.databind.JsonNode> configValidator) {
+
+    /** Without the config directory (the server settings export/import is then not offered). */
+    public AdminServices(CatalogService catalog, RescanService rescans, TagService tags, FolderService folders,
+            PlaylistService playlists, Shuffle shuffle, ActiveStreams streams, TranscodeCache cache,
+            IntSupplier prefetchJobs, BuildInfo build, Clock clock) {
+        this(catalog, rescans, tags, folders, playlists, shuffle, streams, cache, prefetchJobs, build, clock, null, null);
+    }
 }

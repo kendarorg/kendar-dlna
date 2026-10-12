@@ -22,7 +22,7 @@ export const LibraryPage = {
   components: { Icon, Cover, DirTree, RowMenu },
   data() {
     return {
-      tree: null, folder: null, forceTags: false, error: '', info: '', loading: false, treeOpen: false,
+      tree: null, folder: null, busy: false, forceTags: false, error: '', info: '', loading: false, treeOpen: false,
       artVersion: Date.now(), expanded: prefs.get('lib.expanded', null)
     };
   },
@@ -85,6 +85,48 @@ export const LibraryPage = {
       } catch (e) { this.error = e.message; }
     },
     async refresh() { await this.loadTree(); await this.loadFolder(); },
+    /** The rescan started by a file or directory change runs in the background: look again a moment later. */
+    refreshSoon() { this.refresh(); setTimeout(() => { if (this.folder) this.refresh(); }, 2500); },
+    async uploadFiles(event) {
+      const picked = Array.from(event.target.files || []);
+      event.target.value = '';
+      if (!picked.length) return;
+      this.error = ''; this.info = ''; this.busy = true;
+      const failed = [];
+      let done = 0;
+      for (const f of picked) {
+        try { await Api.uploadAudio(this.folder.path, f); done++; } catch (e) { failed.push(f.name + ': ' + e.message); }
+      }
+      this.busy = false;
+      this.info = 'Uploaded ' + done + ' of ' + picked.length + ' file(s); the directory is being rescanned.';
+      if (failed.length) this.error = failed.join('; ');
+      this.refreshSoon();
+    },
+    async newFolder() {
+      const name = window.prompt('Name of the new directory');
+      if (!name || !name.trim()) return;
+      this.error = ''; this.info = '';
+      try { await Api.createDir(this.folder.path, name.trim()); this.info = 'Directory created.'; this.refreshSoon(); }
+      catch (e) { this.error = e.message; }
+    },
+    async removeFolder(path, name, trackCount) {
+      const what = trackCount ? ' and everything in it (' + trackCount + ' tracks)' : '';
+      if (!window.confirm('Delete the directory "' + name + '"' + what + ' from disk? This cannot be undone.')) return;
+      this.error = ''; this.info = '';
+      try {
+        await Api.deleteDir(path, true);
+        this.info = 'Directory deleted.';
+        const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : path;
+        if (this.path === path || (this.path || '').startsWith(path + '/')) this.select(parent);
+        else this.refreshSoon();
+      } catch (e) { this.error = e.message; }
+    },
+    async removeTrack(c) {
+      if (!window.confirm('Delete the file "' + c.name + '" from disk? This cannot be undone.')) return;
+      this.error = ''; this.info = '';
+      try { await Api.deleteTrack(c.path); this.info = 'File deleted.'; await this.refresh(); }
+      catch (e) { this.error = e.message; }
+    },
     go(to) { this.$router.push(to); },
     openInfo(c) { ui.info = Object.assign({}, c.track, { title: c.track.displayTitle || c.track.title }); },
     trackMenu(c) {
@@ -92,6 +134,7 @@ export const LibraryPage = {
       if (c.track.editable) items.push({ id: 'edit', icon: 'edit', label: this.$t('lib.editTags'), run: () => this.go({ path: '/metadata', query: { p: this.folder.path, t: c.path } }) });
       items.push({ id: 'sections', icon: 'playlist', label: this.$t('listjson.file.open'), run: () => this.go(sectionsRoute(c.path)) });
       items.push({ id: 'info', icon: 'info', label: this.$t('action.info'), run: () => this.openInfo(c) });
+      if (!c.track.segment) items.push({ id: 'delete', icon: 'close', label: 'Delete file', run: () => this.removeTrack(c) });
       return items;
     },
     folderMenu(f) {
@@ -103,6 +146,7 @@ export const LibraryPage = {
       if (f.trackCount || f.hasList) items.push({ id: 'list', icon: 'playlist', label: this.$t('listjson.open'), run: () => this.go({ path: '/list-json', query: { p: f.path } }) });
       if (f.virtual) items.push({ id: 'sections', icon: 'playlist', label: this.$t('listjson.file.open'), run: () => this.go(sectionsRoute(f.path)) });
       items.push({ id: 'rescan', icon: 'refresh', label: this.$t('lib.rescan'), run: () => this.rescan(f.path, false) });
+      if (!f.virtual) items.push({ id: 'delete', icon: 'close', label: 'Delete directory', run: () => this.removeFolder(f.path, f.displayName, f.trackCount) });
       items.push({ id: 'player', icon: 'play', label: this.$t('lib.openInPlayer'), run: () => this.go(folderRoute(f.path)) });
       return items;
     },
@@ -157,6 +201,11 @@ export const LibraryPage = {
                 <label class="inline" :title="$t('lib.forceTags.help')"><input type="checkbox" v-model="forceTags"> {{ $t('lib.forceTags') }}</label>
                 <button type="button" class="icon-btn" :title="$t('lib.reload')" :aria-label="$t('lib.reload')" @click="refresh"><icon name="refresh"></icon></button>
                 <router-link class="button" :to="playerRoute(folder.path)"><icon name="play"></icon> {{ $t('lib.openInPlayer') }}</router-link>
+                <template v-if="!folder.virtual">
+                  <label class="button" title="Upload audio files into this directory"><input type="file" multiple hidden accept="audio/*,.mid,.midi,.flac,.opus,.m4a,.aac,.wma,.ape" :disabled="busy" @change="uploadFiles"> Upload files&hellip;</label>
+                  <button type="button" :disabled="busy" @click="newFolder"><icon name="folder"></icon> New directory</button>
+                  <button v-if="!folder.isRoot" type="button" class="danger" :disabled="busy" @click="removeFolder(folder.path, folder.displayName, folder.trackCount)">Delete directory</button>
+                </template>
               </div>
             </div>
           </header>

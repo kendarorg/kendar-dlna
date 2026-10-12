@@ -80,3 +80,7 @@ a.icon-btn { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   .lib-tree, .dt-twisty .ic { transition: none; }
 }
+
+.group-list { list-style: none; margin: .6rem 0; padding: 0; }
+.group-row { display: flex; align-items: center; gap: .6rem; padding: .15rem .3rem; border-bottom: 1px solid rgba(128,128,128,.25); }
+.group-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

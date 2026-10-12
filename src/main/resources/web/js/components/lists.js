@@ -71,7 +71,8 @@ export const TrackList = {
 export const GroupGrid = {
   name: 'GroupGrid',
   components: { Icon, Cover },
-  props: { items: { type: Array, required: true }, mode: { type: String, default: 'group' } },
+  props: { items: { type: Array, required: true }, mode: { type: String, default: 'group' },
+    layout: { type: String, default: 'tiles' } },
   setup() { return { formatTotal }; },
   methods: {
     title(g) { return this.mode === 'folder' ? (g.displayName || g.name) : g.title; },
@@ -96,7 +97,15 @@ export const GroupGrid = {
     menu(event, g) { openMenu(event, this.subject(g)); }
   },
   template: `
-    <div class="tiles">
+    <ul v-if="layout === 'list'" class="group-list plain">
+      <li v-for="g in items" :key="mode + '|' + (g.id || g.path)" class="group-row" @contextmenu.prevent="menu($event, g)">
+        <button type="button" class="icon-btn" :aria-label="$t('action.play')" @click="play(g)"><icon name="play"></icon></button>
+        <router-link :to="route(g)" class="grow">{{ title(g) }}<span v-if="g.virtual" class="badge" :title="$t('badge.virtual')">cue</span></router-link>
+        <span class="muted small">{{ sub(g) }}</span>
+        <button type="button" class="icon-btn" :aria-label="$t('action.more')" aria-haspopup="menu" @click.stop="menu($event, g)"><icon name="more"></icon></button>
+      </li>
+    </ul>
+    <div v-else class="tiles">
       <div v-for="g in items" :key="mode + '|' + (g.id || g.path)" class="tile" @contextmenu.prevent="menu($event, g)">
         <div class="tile-art">
           <router-link :to="route(g)" :aria-label="title(g)" tabindex="-1"><cover :art="g.art" size="medium"

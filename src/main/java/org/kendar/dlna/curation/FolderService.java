@@ -462,6 +462,252 @@ public final class FolderService {
         return out.toByteArray();
     }
 
+    // ---- export ----
+
+    /** The settings.json content of every directory that has non-default settings, keyed by {@code root/path}. */
+    public synchronized ObjectNode exportSettings() {
+        ObjectNode out = Json.mapper().createObjectNode();
+        for (Folder f : catalog.current().allFolders()) {
+            if (f.settingsError() != null || f.settings().equals(DirectorySettings.DEFAULT)) {
+                continue;
+            }
+            try {
+                out.set(f.ref().qualified(), Json.mapper().readTree(render(null, f.settings())));
+            } catch (IOException e) {
+                throw new CurationException(CurationException.IO_ERROR,
+                        "Cannot export settings of " + f.ref() + ": " + e.getMessage(), null, e);
+            }
+        }
+        return out;
+    }
+
+    // ---- rename ----
+
+    /**
+     * Renames one audio file of the library (same directory, same extension). The sidecar, the {@code list.json}
+     * entries and the directory's {@code order} follow, and the catalog is updated in place (cue / chapter tracks
+     * of the file included). Returns the new location.
+     */
+    public synchronized RootRef renameFile(RootRef ref, String newName) {
+        Track old = catalog.current().track(ref)
+                .orElseThrow(() -> new CurationException(CurationException.NOT_FOUND, "Unknown track: " + ref));
+        if (old.isSegment()) {
+            throw new CurationException(CurationException.NOT_EDITABLE,
+                    "A cue sheet or chapter track is not a file of its own, rename the file: " + ref);
+        }
+        String oldName = ref.name();
+        String name = validName(newName);
+        if (!extension(name).equalsIgnoreCase(extension(oldName))) {
+            throw new CurationException(CurationException.INVALID,
+                    "The extension must stay '" + extension(oldName) + "'");
+        }
+        if (name.equals(oldName)) {
+            return ref;
+        }
+        RootRef target = ref.parent().child(name);
+        Path from = files.resolve(ref);
+        Path to = files.resolve(target);
+        if (from == null || to == null || !Files.isRegularFile(from)) {
+            throw new CurationException(CurationException.NOT_FOUND, "File is missing on disk: " + ref);
+        }
+        boolean caseOnly = name.equalsIgnoreCase(oldName);
+        if (!caseOnly && (Files.exists(to) || catalog.current().track(target).isPresent())) {
+            throw new CurationException(CurationException.CONFLICT, "A file named '" + name + "' already exists");
+        }
+        try {
+            Optional<Path> sidecar = org.kendar.dlna.ingestion.SidecarJson.locate(from);
+            Files.move(from, to);
+            if (sidecar.isPresent()) {
+                Files.move(sidecar.get(), org.kendar.dlna.ingestion.SidecarJson.path(to));
+            }
+        } catch (IOException e) {
+            throw new CurationException(CurationException.IO_ERROR,
+                    "Cannot rename " + ref + ": " + e.getMessage(), null, e);
+        }
+        renameInListJson(to.toAbsolutePath().getParent(), oldName, name);
+        renameInOrder(ref.parent(), oldName, name);
+        String oldRel = ref.rel();
+        String newRel = target.rel();
+        catalog.update(cur -> {
+            List<Track> tracks = new ArrayList<>(cur.tracks());
+            tracks.replaceAll(t -> {
+                String rel = t.ref().rel();
+                if (!t.ref().root().equals(ref.root()) || !(rel.equals(oldRel) || rel.startsWith(oldRel + "#"))) {
+                    return t;
+                }
+                RootRef moved = new RootRef(ref.root(), newRel + rel.substring(oldRel.length()));
+                return new Track(moved, t.mtime(), t.size(), t.format(), t.tags(), t.durationMillis(),
+                        t.bitrateKbps(), t.sampleRate(), t.channels(), t.embeddedArt(), t.sampleCount(),
+                        t.renderedMillis(), t.addedAt(), t.segment());
+            });
+            return CatalogEdits.withTracks(cur, tracks);
+        });
+        return target;
+    }
+
+    /** A plain file or directory name (NFC, no separators or characters Windows rejects); throws otherwise. */
+    static String validName(String raw) {
+        String name = raw == null ? "" : java.text.Normalizer.normalize(raw.strip(), java.text.Normalizer.Form.NFC);
+        if (name.isEmpty() || name.length() > MAX_DISPLAY_NAME || name.startsWith(".") || name.endsWith(".")
+                || name.chars().anyMatch(c -> c < 32 || "/\\:*?\"<>|".indexOf(c) >= 0)) {
+            throw new CurationException(CurationException.INVALID, "Invalid name: " + raw);
+        }
+        return name;
+    }
+
+    // ---- upload, delete, directories ----
+
+    /** Stores an uploaded audio file in a directory (never overwrites); the caller rescans the directory. */
+    public synchronized RootRef uploadFile(RootRef dir, String fileName, byte[] data) {
+        directory(dir);
+        String name = validName(fileName);
+        if (org.kendar.dlna.catalog.Format.fromFileName(name).isEmpty()) {
+            throw new CurationException(CurationException.INVALID, "Not a supported audio file: " + name);
+        }
+        if (data == null || data.length == 0) {
+            throw new CurationException(CurationException.INVALID, "Empty upload");
+        }
+        RootRef target = dir.child(name);
+        Path to = files.resolve(target);
+        if (to == null || Files.exists(to)) {
+            throw new CurationException(CurationException.CONFLICT, "A file named '" + name + "' already exists");
+        }
+        try {
+            AtomicFiles.write(to, data);
+        } catch (IOException e) {
+            throw new CurationException(CurationException.IO_ERROR,
+                    "Cannot write " + target + ": " + e.getMessage(), null, e);
+        }
+        return target;
+    }
+
+    /** Deletes an audio file and its sidecar, and drops it (and its cue / chapter tracks) from the catalog. */
+    public synchronized void deleteFile(RootRef ref) {
+        Track t = catalog.current().track(ref)
+                .orElseThrow(() -> new CurationException(CurationException.NOT_FOUND, "Unknown track: " + ref));
+        if (t.isSegment()) {
+            throw new CurationException(CurationException.NOT_EDITABLE,
+                    "A cue sheet or chapter track is not a file of its own, delete the file: " + ref);
+        }
+        Path file = files.resolve(ref);
+        if (file == null || !Files.isRegularFile(file)) {
+            throw new CurationException(CurationException.NOT_FOUND, "File is missing on disk: " + ref);
+        }
+        try {
+            org.kendar.dlna.ingestion.SidecarJson.locate(file).ifPresent(side -> {
+                try {
+                    Files.deleteIfExists(side);
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
+            Files.delete(file);
+        } catch (IOException | java.io.UncheckedIOException e) {
+            throw new CurationException(CurationException.IO_ERROR,
+                    "Cannot delete " + ref + ": " + e.getMessage(), null, e);
+        }
+        String rel = ref.rel();
+        catalog.update(cur -> {
+            List<Track> tracks = new ArrayList<>(cur.tracks());
+            tracks.removeIf(x -> x.ref().root().equals(ref.root())
+                    && (x.ref().rel().equals(rel) || x.ref().rel().startsWith(rel + "#")));
+            return CatalogEdits.withTracks(cur, tracks);
+        });
+    }
+
+    /** Creates a sub-directory; the caller rescans the parent so it enters the catalog. */
+    public synchronized RootRef createDirectory(RootRef parent, String name) {
+        directory(parent);
+        String clean = validName(name);
+        RootRef target = parent.child(clean);
+        Path to = files.resolve(target);
+        if (to == null || Files.exists(to)) {
+            throw new CurationException(CurationException.CONFLICT, "'" + clean + "' already exists");
+        }
+        try {
+            Files.createDirectory(to);
+        } catch (IOException e) {
+            throw new CurationException(CurationException.IO_ERROR,
+                    "Cannot create " + target + ": " + e.getMessage(), null, e);
+        }
+        return target;
+    }
+
+    /**
+     * Removes a directory. A non-empty one needs {@code recursive} (everything below it is deleted); a library root
+     * cannot be removed. Returns the parent, which the caller rescans.
+     */
+    public synchronized RootRef deleteDirectory(RootRef ref, boolean recursive) {
+        if (ref.isRoot()) {
+            throw new CurationException(CurationException.INVALID, "A library root cannot be removed");
+        }
+        Path dir = directory(ref);
+        try (java.util.stream.Stream<Path> kids = Files.list(dir)) {
+            if (!recursive && kids.findAny().isPresent()) {
+                throw new CurationException(CurationException.CONFLICT, "The directory is not empty");
+            }
+        } catch (IOException e) {
+            throw new CurationException(CurationException.IO_ERROR,
+                    "Cannot read " + ref + ": " + e.getMessage(), null, e);
+        }
+        try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.delete(p);
+            }
+        } catch (IOException e) {
+            throw new CurationException(CurationException.IO_ERROR,
+                    "Cannot remove " + ref + ": " + e.getMessage(), null, e);
+        }
+        return ref.parent();
+    }
+
+    private static String extension(String fileName) {
+        int i = fileName.lastIndexOf('.');
+        return i < 0 ? "" : fileName.substring(i);
+    }
+
+    private void renameInListJson(Path dir, String oldName, String newName) {
+        try {
+            Path list = org.kendar.dlna.ingestion.ListJson.locate(dir).orElse(null);
+            if (list == null) {
+                return;
+            }
+            String oldKey = org.kendar.dlna.ingestion.ListJson.key(oldName);
+            List<org.kendar.dlna.ingestion.ListJson.Entry> entries = new ArrayList<>(
+                    org.kendar.dlna.ingestion.ListJson.parseFile(list).entries());
+            boolean changed = false;
+            for (int i = 0; i < entries.size(); i++) {
+                var e = entries.get(i);
+                String fn = e.filename() == null ? "" : e.filename();
+                String k = org.kendar.dlna.ingestion.ListJson.key(fn);
+                if (k.equals(oldKey) || k.startsWith(oldKey + "#")) {
+                    entries.set(i, new org.kendar.dlna.ingestion.ListJson.Entry(
+                            newName + fn.substring(Math.min(fn.length(), oldName.length())), e.author(), e.partOf(),
+                            e.title(), e.transcriber(), e.index(), e.start()));
+                    changed = true;
+                }
+            }
+            if (changed) {
+                AtomicFiles.write(list, ListService.render(entries).getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (IOException | RuntimeException e) {
+            throw new CurationException(CurationException.IO_ERROR,
+                    "File renamed, but list.json could not be updated: " + e.getMessage(), null, e);
+        }
+    }
+
+    private void renameInOrder(RootRef dirRef, String oldName, String newName) {
+        Folder folder = catalog.current().folder(dirRef).orElse(null);
+        if (folder == null || !folder.settings().order().contains(oldName)) {
+            return;
+        }
+        DirectorySettings s = folder.settings();
+        List<String> order = new ArrayList<>(s.order());
+        order.replaceAll(n -> n.equals(oldName) ? newName : n);
+        store(folder, new DirectorySettings(s.sort(), order, s.album(), s.random(), s.views(), s.recent(),
+                s.displayName(), s.keepWholeFiles(), s.bucketThreshold(), s.hidden()));
+    }
+
     // ---- helpers ----
 
     private Folder folder(RootRef ref) {

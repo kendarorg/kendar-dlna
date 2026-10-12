@@ -22,6 +22,9 @@ public final class ApiHandler extends Handler.Abstract {
     public static final String PATH_PREFIX = "/api/v1";
     /** Largest accepted request body (art upload). */
     static final int MAX_BODY = 12 * 1024 * 1024;
+    /** Largest accepted body of an audio file upload (held in memory). */
+    static final int MAX_UPLOAD = 512 * 1024 * 1024;
+    static final String UPLOAD_PATH = "/admin/folders/upload";
 
     private final AdminApi api;
 
@@ -41,8 +44,8 @@ public final class ApiHandler extends Handler.Abstract {
         try {
             out = api.handle(toApiRequest(request));
         } catch (TooLarge e) {
-            out = ApiResponse.error(413, "too_large", "The request body is larger than " + MAX_BODY / 1024 / 1024
-                    + " MB", null);
+            out = ApiResponse.error(413, "too_large", "The request body is larger than the allowed size ("
+                    + MAX_BODY / 1024 / 1024 + " MB, audio uploads " + MAX_UPLOAD / 1024 / 1024 + " MB)", null);
         } catch (IOException e) {
             out = ApiResponse.error(400, "bad_request", "Cannot read the request body", null);
         }
@@ -84,11 +87,12 @@ public final class ApiHandler extends Handler.Abstract {
             headers.merge(f.getName().toLowerCase(Locale.ROOT), f.getValue(), (a, b) -> a + ", " + b);
         }
         byte[] body = new byte[0];
+        int limit = Request.getPathInContext(request).equals(UPLOAD_PATH) ? MAX_UPLOAD : MAX_BODY;
         if (!request.getMethod().equals("GET") && !request.getMethod().equals("HEAD")) {
             try (InputStream in = Content.Source.asInputStream(request)) {
-                body = in.readNBytes(MAX_BODY + 1);
+                body = in.readNBytes(limit + 1);
             }
-            if (body.length > MAX_BODY) {
+            if (body.length > limit) {
                 throw new TooLarge();
             }
         }

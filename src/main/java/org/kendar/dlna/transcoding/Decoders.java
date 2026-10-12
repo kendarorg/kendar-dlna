@@ -20,6 +20,7 @@ public final class Decoders {
             case AAC -> AacDecoder.open(file);
             case ALAC -> AlacDecoder.open(file);
             case ADTS -> AacDecoder.open(file);
+            case WMA, APE, DSD -> FfmpegDecoder.open(file);
             case MIDI, ABC -> throw new IOException(format + " has no decoder; it is rendered");
         };
     }

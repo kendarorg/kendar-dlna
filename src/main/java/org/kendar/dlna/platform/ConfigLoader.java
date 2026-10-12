@@ -19,6 +19,7 @@ import org.kendar.dlna.shared.Json;
  *   <li>{@code kendar.dataDir} / {@code KENDAR_DATA_DIR}</li>
  *   <li>{@code kendar.port} / {@code KENDAR_PORT}</li>
  *   <li>{@code kendar.friendlyName} / {@code KENDAR_FRIENDLY_NAME}</li>
+ *   <li>{@code kendar.ffmpegPath} / {@code KENDAR_FFMPEG_PATH}: the ffmpeg binary used for WMA and APE</li>
  *   <li>{@code kendar.defaultRoot} / {@code KENDAR_DEFAULT_ROOT}: only used when the first-run template is written;
  *       it becomes the single library root {@code Music} (the Docker image sets {@code /music})</li>
  * </ul>
@@ -65,7 +66,7 @@ public final class ConfigLoader {
                     throw new ConfigException("Invalid port override: " + p);
                 }
             }
-            cfg = cfg.with(settings.apply("dataDir"), port, settings.apply("friendlyName"));
+            cfg = cfg.with(settings.apply("dataDir"), port, settings.apply("friendlyName")).withFfmpegPath(settings.apply("ffmpegPath"));
             validate(cfg);
             try {
                 org.kendar.dlna.clients.ClientProfiles.resolver(cfg.clients(), configDir);

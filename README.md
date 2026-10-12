@@ -29,7 +29,7 @@ search, MP3 transcoding of formats the renderer cannot play, MIDI rendering, and
 database, no native libraries. The design is in `plan.md`.
 
 * Formats: MP3, OGG Vorbis, FLAC, WAV, AIFF, Opus, AAC-LC (`.m4a` `.mp4` and raw ADTS `.aac`), Apple Lossless (ALAC,
-  `.m4a`), MIDI (`.mid` `.midi` `.kar`), ABC notation (`.abc`, converted to MIDI and rendered like MIDI; a file with several `X:` tunes becomes one virtual track per tune, tags are read-only). Others (HE-AAC, WMA, APE, WavPack, DSD `.dsf` `.dff`, `.m4b`, ...) are listed in
+  `.m4a`), MIDI (`.mid` `.midi` `.kar`), ABC notation (`.abc`, converted to MIDI and rendered like MIDI; a file with several `X:` tunes becomes one virtual track per tune, tags are read-only). WMA (`.wma`) and APE (`.ape`) need ffmpeg (see [ffmpeg](#ffmpeg-wma-ape-and-dsd)), as does DSD (`.dsf` `.dff`, decimated to 44.1 kHz PCM). Others (HE-AAC, WavPack, `.m4b`, ...) are listed in
   the admin page as *unsupported*, with the reason, and are not exposed through DLNA.
 * Out of scope: authentication on the DLNA side, gapless playback, client queues, filesystem watching.
 
@@ -103,7 +103,7 @@ restart the container.
 DLNA discovery is SSDP: UDP multicast to `239.255.255.250:1900`, plus the HTTP description and stream URLs that must be
 reachable from the renderers at the address the server advertises. The compose file therefore uses
 `network_mode: host`, so the server sits on the LAN interface directly. The HTTP port is then the host's port 8200
-(`network.port` in `config.json`; if you change it, also set `KENDAR_PORT` for the health check).
+(set `KENDAR_PORT` in the stack environment, or `network.port` in `config.json`; `KENDAR_PORT` wins and also drives the health check).
 
 * **Linux hosts** (including NAS boxes, Raspberry Pi, a VM with a bridged adapter): works as is.
 * **Docker Desktop on Windows/macOS**: host networking does not give the container the real LAN (it lives in a VM), so
@@ -144,6 +144,7 @@ Environment variables:
 | `KENDAR_DATA_DIR` | (config) | overrides `library.dataDir` |
 | `KENDAR_PORT` | 8200 | overrides `network.port` (also used by the health check) |
 | `KENDAR_FRIENDLY_NAME` | (config) | overrides `server.friendlyName` |
+| `KENDAR_FFMPEG_PATH` | `ffmpeg` (PATH) | overrides `transcode.ffmpegPath`: the ffmpeg binary for WMA and APE |
 | `KENDAR_DEFAULT_ROOT` | `/music` (image) | only for the first-run template: library root `Music` |
 
 `LANG=C.UTF-8` is set so non-ASCII file names work. Health: `GET /health` returns `{"status":"UP"}` (the image and
@@ -267,6 +268,20 @@ Hardening checklist for an internet-facing player:
   to stereo. Details and test results: `docs/aac-alac-findings.md`.
 * Playable: every file of the formats above. Unsupported files, bad `settings.json` and broken playlist entries are
   listed in the admin page. Rescans: manual (admin page), scheduled (`scan.cron`, default every 12 h).
+
+## ffmpeg (WMA, APE and DSD)
+
+WMA, APE and DSD have no Java decoder, so they are read and decoded through the external `ffmpeg` (tags from
+`ffmpeg -f ffmetadata`, audio as PCM, then converted to MP3 / LPCM like every other format). Tags of these files are
+read-only.
+
+* **Docker**: the image installs `ffmpeg` from the distribution's package manager, which picks the build for the image
+  architecture (amd64, arm64, ...). Build with `--build-arg INSTALL_FFMPEG=false` to leave it out.
+* **Elsewhere**: install ffmpeg and make it available on the `PATH`, or give its location with `transcode.ffmpegPath`
+  in `config.json` or `KENDAR_FFMPEG_PATH` (a bare name is looked up on the `PATH`; the variable wins).
+* **Missing ffmpeg**: the startup log says so (`ffmpeg NOT FOUND ...`, a warning), and the `.wma` / `.ape` files are
+  listed as unsupported in the admin page with the reason. Everything else works. Transcoding must be on
+  (`transcode.enabled`), as for MIDI.
 
 ## SoundFont (MIDI)
 

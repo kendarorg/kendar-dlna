@@ -5,12 +5,14 @@ import java.util.Optional;
 import java.util.logging.Logger;
 
 import org.kendar.dlna.ingestion.CompositeTagReader;
+import org.kendar.dlna.ingestion.FfmpegTagReader;
 import org.kendar.dlna.ingestion.JAudioTaggerReader;
 import org.kendar.dlna.ingestion.AbcFile;
 import org.kendar.dlna.ingestion.AbcTagReader;
 import org.kendar.dlna.ingestion.MidiTagReader;
 import org.kendar.dlna.ingestion.OpusTagReader;
 import org.kendar.dlna.ingestion.TagReader;
+import org.kendar.dlna.transcoding.Ffmpeg;
 import org.kendar.dlna.transcoding.MidiRenderer;
 import org.kendar.dlna.transcoding.SilenceTrimmer;
 import org.kendar.dlna.transcoding.Transcoder;
@@ -39,7 +41,35 @@ final class TranscodingWiring {
         this.midiReason = midiReason;
     }
 
+    /** ffmpeg (WMA, APE): the first line of its version, or null when the binary cannot be run. */
+    String ffmpegVersion;
+    String ffmpegBinary = Ffmpeg.DEFAULT_BINARY;
+    private boolean transcodingEnabled;
+
     static TranscodingWiring create(AppConfig.Transcode tc, Path dataDir) {
+        String ffmpeg = Ffmpeg.configure(tc.ffmpegPath());
+        TranscodingWiring w = build(tc, dataDir);
+        w.ffmpegVersion = ffmpeg;
+        w.ffmpegBinary = Ffmpeg.binary();
+        w.transcodingEnabled = tc.enabled();
+        return w;
+    }
+
+    /** Whether WMA and APE files can be served: ffmpeg runs and transcoding is on. */
+    boolean ffmpegUsable() {
+        return ffmpegVersion != null && transcodingEnabled;
+    }
+
+    /** Why they cannot, or null. */
+    String ffmpegProblem() {
+        if (ffmpegVersion == null) {
+            return "ffmpeg not found or not runnable at '" + ffmpegBinary + "' (set transcode.ffmpegPath in config.json "
+                    + "or KENDAR_FFMPEG_PATH)";
+        }
+        return transcodingEnabled ? null : "transcoding is disabled";
+    }
+
+    private static TranscodingWiring build(AppConfig.Transcode tc, Path dataDir) {
         if (!tc.enabled()) {
             return new TranscodingWiring(new Transcoder(null), false, "", "transcoding is disabled");
         }
@@ -73,7 +103,8 @@ final class TranscodingWiring {
     /** Tags and basic properties of all formats this installation can serve (no sample-count probing). */
     TagReader plainTagReader() {
         return new CompositeTagReader(new JAudioTaggerReader(), new OpusTagReader(),
-                new MidiTagReader(midiAvailable, midiReason), new AbcTagReader(midiAvailable, midiReason));
+                new MidiTagReader(midiAvailable, midiReason), new AbcTagReader(midiAvailable, midiReason),
+                new FfmpegTagReader(ffmpegBinary, ffmpegUsable(), String.valueOf(ffmpegProblem())));
     }
 
     /** The tag reader for all formats this installation can serve, with exact sample counts. */
@@ -83,7 +114,7 @@ final class TranscodingWiring {
 
     /** Appended to the roots fingerprint of the persisted index. */
     String fingerprintSuffix() {
-        return "|" + CAPABILITY_VERSION + (midiAvailable ? "+midi" : "");
+        return "|" + CAPABILITY_VERSION + (midiAvailable ? "+midi" : "") + (ffmpegUsable() ? "+ffmpeg" : "");
     }
 
     String midiReason() {

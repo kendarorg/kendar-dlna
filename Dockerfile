@@ -44,6 +44,15 @@ FROM ${RUNTIME_IMAGE}
 #   RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
 RUN if command -v apk >/dev/null 2>&1; then apk add --no-cache su-exec; fi
 
+# ffmpeg decodes WMA and APE (no Java decoder exists for them). The package manager installs the build matching the
+# image architecture (amd64, arm64, ...), so there is nothing to pick by hand. Skip it with --build-arg INSTALL_FFMPEG=false
+# (WMA / APE files are then listed as unsupported); a binary elsewhere can be named with KENDAR_FFMPEG_PATH.
+ARG INSTALL_FFMPEG=true
+RUN if [ "$INSTALL_FFMPEG" = "true" ]; then \
+        if command -v apk >/dev/null 2>&1; then apk add --no-cache ffmpeg; \
+        else apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*; fi; \
+    fi
+
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TZ=UTC \

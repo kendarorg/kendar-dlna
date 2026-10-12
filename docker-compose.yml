@@ -7,6 +7,7 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
         SKIP_TESTS: ${SKIP_TESTS:-true}
+        INSTALL_FFMPEG: ${INSTALL_FFMPEG:-true}
     image: ${IMAGE_NAME:-kendar-dlna}:${IMAGE_TAG:-latest}
     container_name: kendar-dlna
     # SSDP discovery uses UDP multicast: it needs the host network (Linux hosts only). The HTTP port is
@@ -20,6 +21,10 @@ services:
       PGID: ${PGID:-1000}
       TZ: ${TZ:-UTC}
       JAVA_OPTS: ${JAVA_OPTS:-}
+      # HTTP port (host network: this is the port on the host). Overrides network.port of config.json.
+      KENDAR_PORT: ${KENDAR_PORT:-8200}
+      # ffmpeg for WMA / APE: the image ships one on the PATH; set a path to use another binary.
+      KENDAR_FFMPEG_PATH: ${KENDAR_FFMPEG_PATH:-}
     volumes:
       - ${MUSIC_DIR:?set MUSIC_DIR}:/music
       - ${PLAYLISTS_DIR:?set PLAYLISTS_DIR}:/playlists

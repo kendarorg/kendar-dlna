@@ -24,7 +24,13 @@ public enum Format {
     /** Apple Lossless in an MP4 container; found through {@code .m4a} files, hence no extension of its own. */
     ALAC(),
     /** Raw AAC-LC frames with ADTS headers ({@code .aac}): no container, so no tags. */
-    ADTS("aac");
+    ADTS("aac"),
+    /** Windows Media Audio ({@code .wma}); read and decoded through the external ffmpeg. */
+    WMA("wma"),
+    /** Monkey's Audio ({@code .ape}); read and decoded through the external ffmpeg. */
+    APE("ape"),
+    /** DSD audio ({@code .dsf}, {@code .dff}), decimated to PCM by the external ffmpeg. */
+    DSD("dsf", "dff");
 
     private final List<String> extensions;
 
@@ -38,7 +44,7 @@ public enum Format {
 
     /** Whether the tags of files of this format can be written (at least partly; not Opus and raw ADTS AAC). */
     public boolean tagsEditable() {
-        return this != OPUS && this != ADTS && this != ABC;
+        return this != OPUS && this != ADTS && this != ABC && !needsFfmpeg();
     }
 
     /** Formats that only exist rendered: MIDI and ABC are turned into audio by the MIDI renderer, never served as is. */
@@ -50,6 +56,11 @@ public enum Format {
      * The tag fields that can be written for this format: all of them, except MIDI (a sequence only holds a title,
      * an artist and a copyright year) and the formats without writable tags (none).
      */
+    /** Formats without a Java decoder: they need the ffmpeg binary. */
+    public boolean needsFfmpeg() {
+        return this == WMA || this == APE || this == DSD;
+    }
+
     public List<String> editableFields() {
         if (this == MIDI) {
             return List.of("title", "artist", "year");

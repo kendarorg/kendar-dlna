@@ -108,6 +108,12 @@ public final class Main {
         LOG.info("Transcoding " + (tc.enabled() ? "on, MP3 " + tc.bitrateKbps() + " kbps, prefetch "
                 + (tc.prefetch() ? "on" : "off") : "off") + ", MIDI "
                 + (transcoding.midiAvailable ? "available" : "unavailable (" + transcoding.midiReason() + ")"));
+        if (transcoding.ffmpegVersion != null) {
+            LOG.info("ffmpeg (WMA, APE): " + transcoding.ffmpegVersion + " [" + transcoding.ffmpegBinary + "]");
+        } else {
+            LOG.warning("ffmpeg NOT FOUND (" + transcoding.ffmpegBinary + "): WMA and APE files will be listed as unsupported. "
+                    + "Install ffmpeg or set transcode.ffmpegPath in config.json / KENDAR_FFMPEG_PATH");
+        }
         LibraryScanner scanner = new LibraryScanner(transcoding.tagReader(), Clock.systemUTC(), tc.enabled());
         JsonCatalogStore store = new JsonCatalogStore(dataDir,
                 RootsFingerprint.of(roots.roots()) + transcoding.fingerprintSuffix() + (tc.enabled() ? "|sections" : ""),

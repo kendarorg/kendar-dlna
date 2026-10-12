@@ -134,12 +134,23 @@ public record AppConfig(Library library, Network network, Server server, Random 
      * @param soundFontPath         SF2 file for MIDI rendering; null = the bundled GeneralUser GS if present
      * @param midiSilenceThreshold  absolute 16-bit amplitude regarded as silence when trimming the tail (0..2000)
      * @param midiMaxTailSeconds    longest tail rendered after the last MIDI event (0..120)
+     * @param ffmpegPath           the ffmpeg binary for WMA and APE (a name looked up on the PATH, or a path); null = "ffmpeg"
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Transcode(Boolean enabled, Integer bitrateKbps, Boolean prefetch, Integer prefetchJobs,
             Integer cacheMaxMb, Integer cacheTtlHours, String soundFontPath, Integer midiSilenceThreshold,
-            Integer midiMaxTailSeconds) {
+            Integer midiMaxTailSeconds, String ffmpegPath) {
+
+        /** Without an ffmpeg location of its own (looked up on the PATH). */
+        public Transcode(Boolean enabled, Integer bitrateKbps, Boolean prefetch, Integer prefetchJobs,
+                Integer cacheMaxMb, Integer cacheTtlHours, String soundFontPath, Integer midiSilenceThreshold,
+                Integer midiMaxTailSeconds) {
+            this(enabled, bitrateKbps, prefetch, prefetchJobs, cacheMaxMb, cacheTtlHours, soundFontPath,
+                    midiSilenceThreshold, midiMaxTailSeconds, null);
+        }
+
         public Transcode {
+            ffmpegPath = ffmpegPath == null || ffmpegPath.isBlank() ? null : ffmpegPath.strip();
             enabled = enabled == null ? Boolean.TRUE : enabled;
             bitrateKbps = bitrateKbps == null ? DEFAULT_MP3_BITRATE : bitrateKbps;
             prefetch = prefetch == null ? Boolean.TRUE : prefetch;
@@ -165,7 +176,9 @@ public record AppConfig(Library library, Network network, Server server, Random 
         Transcode t = transcode;
         Transcode tc = new Transcode(t.enabled(), t.bitrateKbps(), t.prefetch(), t.prefetchJobs(), t.cacheMaxMb(),
                 t.cacheTtlHours(), t.soundFontPath() == null ? null : resolve(base, t.soundFontPath()),
-                t.midiSilenceThreshold(), t.midiMaxTailSeconds());
+                t.midiSilenceThreshold(), t.midiMaxTailSeconds(),
+                t.ffmpegPath() != null && (t.ffmpegPath().contains("/") || t.ffmpegPath().contains("\\"))
+                        ? resolve(base, t.ffmpegPath()) : t.ffmpegPath());
         return new AppConfig(lib, network, server, random, views, scan, tc, clients);
     }
 
@@ -179,6 +192,17 @@ public record AppConfig(Library library, Network network, Server server, Random 
             return p;
         }
         return base.resolve(p).normalize().toString();
+    }
+
+    /** Copy with the ffmpeg location replaced (null = unchanged). */
+    AppConfig withFfmpegPath(String path) {
+        if (path == null) {
+            return this;
+        }
+        Transcode t = transcode;
+        return new AppConfig(library, network, server, random, views, scan, new Transcode(t.enabled(), t.bitrateKbps(),
+                t.prefetch(), t.prefetchJobs(), t.cacheMaxMb(), t.cacheTtlHours(), t.soundFontPath(),
+                t.midiSilenceThreshold(), t.midiMaxTailSeconds(), path), clients);
     }
 
     /** Copy with overridden values (used for env / system property overrides). */

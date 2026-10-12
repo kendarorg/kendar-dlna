@@ -22,6 +22,9 @@ public final class MediaTypes {
             case ABC -> "text/vnd.abc";
             case AAC, ALAC -> "audio/mp4";
             case ADTS -> "audio/aac";
+            case WMA -> "audio/x-ms-wma";
+            case APE -> "audio/x-ape";
+            case DSD -> "audio/x-dsf";
         };
     }
 

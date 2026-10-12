@@ -443,7 +443,7 @@ public class LibraryScanner {
         }
         String ext = fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
         return switch (ext) {
-            case "wma", "ape", "wv", "mpc", "m4b", "alac", "dsf", "dff" ->
+            case "wv", "mpc", "m4b", "alac" ->
                     Optional.of("no decoder for ." + ext);
             default -> Optional.empty();
         };

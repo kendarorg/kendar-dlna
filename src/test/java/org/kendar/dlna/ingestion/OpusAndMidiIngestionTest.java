@@ -177,7 +177,7 @@ class OpusAndMidiIngestionTest {
     @Test
     void tagEditingIsDisabledForOpusAndRawAdtsOnlyAndMidiHoldsThreeFields() {
         for (Format f : Format.values()) {
-            assertThat(f.tagsEditable()).as(f.name()).isEqualTo(f != Format.OPUS && f != Format.ADTS && f != Format.ABC);
+            assertThat(f.tagsEditable()).as(f.name()).isEqualTo(f != Format.OPUS && f != Format.ADTS && f != Format.ABC && !f.needsFfmpeg());
         }
     }
 

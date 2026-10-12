@@ -52,6 +52,11 @@ public final class Transcoder {
         this.abc = abc;
     }
 
+    /** Whether WMA and APE can be decoded (ffmpeg was found at startup). */
+    public boolean ffmpegAvailable() {
+        return Ffmpeg.available();
+    }
+
     public boolean midiAvailable() {
         return midi != null;
     }

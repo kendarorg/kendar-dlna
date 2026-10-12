@@ -83,7 +83,8 @@ public final class TranscodeService implements PrefetchTarget {
 
     /** Whether files of the format can be offered as MP3 / LPCM at all. */
     public boolean canTranscode(Format format) {
-        return enabled && (!format.rendered() || transcoder.midiAvailable());
+        return enabled && (!format.rendered() || transcoder.midiAvailable())
+                && (!format.needsFfmpeg() || transcoder.ffmpegAvailable());
     }
 
     private static SourceFormat sourceFormat(Format f) {

@@ -151,7 +151,7 @@ class TranscodeConfigTest {
         TranscodingWiring on = TranscodingWiring.create(withFont, data);
         assertThat(on.midiAvailable).isTrue();
         assertThat(on.transcoder.midiAvailable()).isTrue();
-        assertThat(on.fingerprintSuffix()).endsWith("+midi");
+        assertThat(on.fingerprintSuffix()).contains("+midi");
         assertThat(on.tagReader().supports(Format.MIDI)).isTrue();
         assertThat(on.tagReader().supports(Format.OPUS)).isTrue();
     }

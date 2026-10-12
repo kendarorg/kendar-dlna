@@ -118,8 +118,15 @@ public final class SettingsParser {
                 }
                 keepWhole = n.get("keepWholeFiles").asBoolean();
             }
+            Integer bucket = null;
+            if (n.has("bucketThreshold") && !n.get("bucketThreshold").isNull()) {
+                if (!n.get("bucketThreshold").isInt() || n.get("bucketThreshold").asInt() < 1) {
+                    return failure("bucketThreshold must be an integer of at least 1");
+                }
+                bucket = n.get("bucketThreshold").asInt();
+            }
             return new Result(new DirectorySettings(sort, order, album, random, views, recent, displayName,
-                    keepWhole), null);
+                    keepWhole, bucket), null);
         } catch (IOException | RuntimeException e) {
             return failure("malformed JSON: " + e.getMessage().lines().findFirst().orElse(""));
         }

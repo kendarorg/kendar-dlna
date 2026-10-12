@@ -61,6 +61,15 @@ class SettingsParserTest {
     }
 
     @Test
+    void parsesBucketThreshold() {
+        assertThat(SettingsParser.parse("{}").settings().bucketThreshold()).isNull();
+        assertThat(SettingsParser.parse("{\"bucketThreshold\":null}").settings().bucketThreshold()).isNull();
+        assertThat(SettingsParser.parse("{\"bucketThreshold\":50}").settings().bucketThreshold()).isEqualTo(50);
+        assertThat(SettingsParser.parse("{\"bucketThreshold\":0}").error()).contains("bucketThreshold");
+        assertThat(SettingsParser.parse("{\"bucketThreshold\":\"50\"}").error()).contains("bucketThreshold");
+    }
+
+    @Test
     void emptyObjectAndEmptyFileGiveDefaults() {
         assertThat(SettingsParser.parse("{}")).isEqualTo(new SettingsParser.Result(DirectorySettings.DEFAULT, null));
         assertThat(SettingsParser.parse("   ").error()).isNull();

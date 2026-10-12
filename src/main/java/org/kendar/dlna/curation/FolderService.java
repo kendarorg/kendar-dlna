@@ -120,9 +120,12 @@ public final class FolderService {
             throw new CurationException(CurationException.INVALID, parsed.error());
         }
         DirectorySettings next = parsed.settings();
-        if (!body.has("keepWholeFiles") && folder.settings().keepWholeFiles()) {
+        // a client that does not know a field must not drop its stored value
+        boolean keepWhole = body.has("keepWholeFiles") ? next.keepWholeFiles() : folder.settings().keepWholeFiles();
+        Integer bucket = body.has("bucketThreshold") ? next.bucketThreshold() : folder.settings().bucketThreshold();
+        if (keepWhole != next.keepWholeFiles() || !java.util.Objects.equals(bucket, next.bucketThreshold())) {
             next = new DirectorySettings(next.sort(), next.order(), next.album(), next.random(), next.views(),
-                    next.recent(), next.displayName(), true);   // a client that does not know the field must not drop it
+                    next.recent(), next.displayName(), keepWhole, bucket);
         }
         validate(next);
         return store(folder, next);
@@ -215,6 +218,11 @@ public final class FolderService {
             out.put("recent", s.recent());
         } else {
             out.remove("recent");
+        }
+        if (s.bucketThreshold() == null) {
+            out.remove("bucketThreshold");
+        } else {
+            out.put("bucketThreshold", s.bucketThreshold());
         }
         if (s.keepWholeFiles()) {
             out.put("keepWholeFiles", true);
@@ -331,7 +339,7 @@ public final class FolderService {
         AlbumInfo album = new AlbumInfo(title, albumArtist, num(year), genre, num(disc), num(discTotal));
         DirectorySettings cur = folder.settings();
         DirectorySettings next = new DirectorySettings(cur.sort(), cur.order(), album, cur.random(), cur.views(),
-                cur.recent(), cur.displayName(), cur.keepWholeFiles());
+                cur.recent(), cur.displayName(), cur.keepWholeFiles(), cur.bucketThreshold());
         if (write) {
             store(folder, next);
         }

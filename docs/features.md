@@ -136,6 +136,7 @@ Unknown keys are ignored when reading and preserved when the UI saves a valid fi
 | `recent` | integer N | 0 (off) | same | N > 0 adds `[Recently added]` |
 | `views` | array of `album` `artist` `genre` `title` `composer` | `[]` | other value: file invalid; duplicates removed | Adds `[Albums]`, `[Artists]`, `[Genres]`, `[Titles]`, `[Composers]` in this order |
 | `keepWholeFiles` | boolean | `false` | not a boolean: file invalid | Keeps the whole audio file listed next to the virtual album that a cue sheet / chapters split it into (see [Cue sheets and chapters](#cue-sheets-and-chapters-virtual-albums)). Editable in the web UI: Directory settings, fieldset "Cue sheets and chapters", checkbox "Keep the whole files listed" (saving without the field never drops a stored `true`) |
+| `bucketThreshold` | integer | none (use `views.bucketThreshold`, 500) | not an integer >= 1: file invalid | Artists and Titles views of this directory with more entries than this are split into `A`-`Z`/`#` containers. Editable in the web UI: Directory settings, fieldset "Virtual containers", field "Group Artists and Titles by letter above N entries" (empty = server default) |
 
 Album overlay rules: non-null `album.*` fields win over the tags **in all output** (DIDL, views, search); per-track
 fields (title, track number, artist, composer) always come from the tags. A directory is **out of sync** when an

@@ -65,7 +65,7 @@ are rooted, so for a local run set them explicitly (or pass `-Dkendar.dataDir`).
 | `network.trustedProxies` | list of strings | `[]` | each an IP or CIDR | Reverse proxies whose `X-Forwarded-For` / `X-Forwarded-Proto` are honored (client address for the LAN check, throttling and stream bookkeeping; `Secure` cookies when `https`). Headers from other peers are ignored. **Set this when running behind a proxy** (e.g. `["172.18.0.0/16"]` for a Docker network), otherwise the proxy address is the client |
 | `server.friendlyName` | string | `Kendar DLNA` | not blank | Name shown by renderers |
 | `random.ttlMinutes` | int | 30 | >= 1 | Random N snapshot lifetime after the last browse/stream activity |
-| `views.bucketThreshold` | int | 500 | >= 1 | View lists longer than this (Artists, Composers, Titles) split into `A`-`Z`/`#` |
+| `views.bucketThreshold` | int | 500 | >= 1 | View lists longer than this (Artists, Composers, Titles) split into `A`-`Z`/`#`; a directory can override it with `bucketThreshold` in its `settings.json` (admin: Directory settings) |
 | `scan.cron` | string | `0 */12 * * *` | valid 5-field cron | Periodic rescan, local time. Syntax in [features.md](features.md#library-and-scanning) |
 | `scan.catchUpThresholdHours` | int | 12 | >= 1 | After a start from the persisted index, rescan in the background if the last completed scan is older |
 | `transcode.enabled` | bool | true | - | false: originals only, MIDI unavailable, cue sheets and chapters ignored (files stay whole) |

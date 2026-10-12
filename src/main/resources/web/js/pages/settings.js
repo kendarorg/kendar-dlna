@@ -40,6 +40,7 @@ function settingsForm(folder) {
     random: s.random,
     recent: s.recent || 0,
     keepWholeFiles: !!s.keepWholeFiles,
+    bucketThreshold: s.bucketThreshold == null ? '' : s.bucketThreshold,
     views: s.views.slice(),
     storedOrder: s.order.slice()
   };
@@ -66,6 +67,7 @@ function settingsBody(form) {
     random: numberOrNull(form.random) || 0,
     recent: numberOrNull(form.recent) || 0,
     keepWholeFiles: !!form.keepWholeFiles,
+    bucketThreshold: numberOrNull(form.bucketThreshold),
     views: form.views
   };
 }
@@ -108,8 +110,9 @@ export const SettingsPage = {
       try {
         const body = settingsBody(this.form);
         if (Number.isNaN(body.album.year) || Number.isNaN(body.album.discNumber) || Number.isNaN(body.album.discTotal)
-          || Number.isNaN(Number(this.form.random)) || Number.isNaN(Number(this.form.recent))) {
-          throw new Error('Year, disc number, disc total, Random N and Recently added must be whole numbers.');
+          || Number.isNaN(Number(this.form.random)) || Number.isNaN(Number(this.form.recent))
+          || Number.isNaN(body.bucketThreshold) || (body.bucketThreshold !== null && body.bucketThreshold < 1)) {
+          throw new Error('Year, disc number, disc total, Random N, Recently added and the letter grouping limit must be whole numbers (the limit at least 1).');
         }
         await Api.saveSettings(this.path, body);
         await this.load();
@@ -247,6 +250,10 @@ export const SettingsPage = {
               <label :for="'v-' + v" class="grow">{{ labels[v] }}</label>
             </li>
           </ul>
+          <label>{{ $t('settings.bucketThreshold') }}
+            <input type="number" min="1" v-model="form.bucketThreshold" class="short" id="bucket-threshold" :placeholder="$t('settings.bucketThreshold.default')">
+          </label>
+          <p class="muted">{{ $t('settings.bucketThreshold.help') }}</p>
         </fieldset>
 
         <div class="row">

@@ -5,13 +5,21 @@ import java.util.List;
 /**
  * Parsed {@code settings.json} of one directory. No inheritance: it only affects its own directory. {@code recent}
  * is N of the "Recently added" container (0 = disabled). {@code displayName} (nullable, trimmed, never blank)
- * replaces the directory name in every listing; the directory on disk is not renamed.
+ * replaces the directory name in every listing; the directory on disk is not renamed. {@code bucketThreshold}
+ * (nullable = use {@code views.bucketThreshold} of the config) is the list length above which the Artists and
+ * Titles views of this directory are split into A-Z / # containers.
  */
 public record DirectorySettings(SortMode sort, List<String> order, AlbumInfo album, int random,
-        List<ViewKind> views, int recent, String displayName, boolean keepWholeFiles) {
+        List<ViewKind> views, int recent, String displayName, boolean keepWholeFiles, Integer bucketThreshold) {
 
     public static final DirectorySettings DEFAULT =
-            new DirectorySettings(SortMode.FILENAME, List.of(), AlbumInfo.NONE, 0, List.of(), 0, null, false);
+            new DirectorySettings(SortMode.FILENAME, List.of(), AlbumInfo.NONE, 0, List.of(), 0, null, false, null);
+
+    /** Settings without a bucket threshold of their own. */
+    public DirectorySettings(SortMode sort, List<String> order, AlbumInfo album, int random,
+            List<ViewKind> views, int recent, String displayName, boolean keepWholeFiles) {
+        this(sort, order, album, random, views, recent, displayName, keepWholeFiles, null);
+    }
 
     /** Settings with the default {@code keepWholeFiles} (false). */
     public DirectorySettings(SortMode sort, List<String> order, AlbumInfo album, int random,
@@ -27,6 +35,7 @@ public record DirectorySettings(SortMode sort, List<String> order, AlbumInfo alb
         views = views == null ? List.of() : List.copyOf(views);
         recent = Math.max(0, recent);
         displayName = displayName == null || displayName.isBlank() ? null : displayName.strip();
+        bucketThreshold = bucketThreshold == null || bucketThreshold < 1 ? null : bucketThreshold;
     }
 
     /** Settings without a display name. */

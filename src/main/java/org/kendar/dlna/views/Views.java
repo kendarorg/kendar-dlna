@@ -162,7 +162,8 @@ public final class Views implements ContainerNavigation {
                     .map(t -> EffectiveTrack.of(t, snap.folder(t.parentRef()).map(Folder::settings)
                             .orElse(DirectorySettings.DEFAULT)))
                     .toList();
-            return new ViewBuilder(folder.id(), bucketThreshold).build(kind, pool);
+            Integer own = folder.settings().bucketThreshold();
+            return new ViewBuilder(folder.id(), own != null ? own : bucketThreshold).build(kind, pool);
         });
     }
 

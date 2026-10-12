@@ -358,6 +358,9 @@ export const en = {
   'settings.split': 'Cue sheets and chapters',
   'settings.keepWholeFiles': 'Keep the whole files listed',
   'settings.keepWholeFiles.help': 'A file described by a cue sheet or chapters is shown as an album of tracks and the whole file is hidden. Tick this to also list the whole file next to that album.',
+  'settings.bucketThreshold': 'Group Artists and Titles by letter above N entries',
+  'settings.bucketThreshold.default': 'server default',
+  'settings.bucketThreshold.help': 'When an Artists or Titles view of this directory has more entries than this, it is split into A-Z and # containers. Leave empty to use the server default (views.bucketThreshold in config.json, 500).',
 
   'lib.tree': 'Directories',
   'lib.directories': 'Directories',

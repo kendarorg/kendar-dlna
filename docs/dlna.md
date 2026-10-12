@@ -105,6 +105,7 @@ directory applied):
 Names are grouped by normalized key (case, accents, whitespace); the displayed spelling is the most frequent variant.
 When the artist list or the title list has more than `views.bucketThreshold` (default 500) entries it is split into
 `A`-`Z` and `#` bucket containers (a letter container holds the entries starting with it; `#` everything else).
+(A directory can override the limit with `bucketThreshold` in its `settings.json`, editable in Directory settings.)
 Albums and Genres are never bucketed.
 
 Random N snapshot lifecycle: created when the directory is browsed; reused while it is not expired; expires after

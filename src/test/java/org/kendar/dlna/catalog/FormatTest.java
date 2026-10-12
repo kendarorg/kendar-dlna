@@ -17,9 +17,9 @@ class FormatTest {
     }
 
     @Test
-    void dsdAndAudiobooksAreNotFormats() {
-        assertThat(Format.fromFileName("a.dsf")).isEmpty();
-        assertThat(Format.fromFileName("a.dff")).isEmpty();
+    void dsdIsAFormatWhileAudiobooksAreNot() {
+        assertThat(Format.fromFileName("a.dsf")).contains(Format.DSD);
+        assertThat(Format.fromFileName("a.dff")).contains(Format.DSD);
         assertThat(Format.fromFileName("a.m4b")).isEmpty();
     }
 

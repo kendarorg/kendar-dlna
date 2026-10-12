@@ -144,6 +144,7 @@ Environment variables:
 | `KENDAR_DATA_DIR` | (config) | overrides `library.dataDir` |
 | `KENDAR_PORT` | 8200 | overrides `network.port` (also used by the health check) |
 | `KENDAR_FRIENDLY_NAME` | (config) | overrides `server.friendlyName` |
+| `KENDAR_ADMIN_PASSWORD` | (unset) | fixed admin password (plain or `pbkdf2-sha256$` hash), applied at every start; `KENDAR_ADMIN_USER` names the account |
 | `KENDAR_FFMPEG_PATH` | `ffmpeg` (PATH) | overrides `transcode.ffmpegPath`: the ffmpeg binary for WMA and APE |
 | `KENDAR_DEFAULT_ROOT` | `/music` (image) | only for the first-run template: library root `Music` |
 
@@ -179,6 +180,12 @@ compose health checks use busybox `wget`).
   replace the host with the public address when the user comes from outside), issues new invites and temporary
   passwords, edits, disables and deletes users. *Shared playlists* (`#/admin/shared-playlists`) makes a shared playlist
   private again or deletes it; private playlists, favorites, queues and history are never visible to admins.
+* **Fixed admin password from the environment**: set `KENDAR_ADMIN_PASSWORD` (and optionally `KENDAR_ADMIN_USER`,
+  default: the existing admin, else `admin`) in the stack's environment. At every start the server creates the admin
+  with that password when there is none (nothing is generated or logged), or replaces the password when it differs,
+  without forcing a change at the first login and signing the admin out everywhere. The value is either the plain
+  password (at least 10 characters) or a stored `pbkdf2-sha256$...` hash, so the clear text need not be in the stack.
+  Passwords changed in the UI are overwritten at the next restart: remove the variable to manage it in the UI again.
 * **Lost admin password**: create the empty file `reset-password` in the config directory
   (`touch /config/reset-password` in the container console, or `touch $CONFIG_DIR/reset-password` on the host). The
   server notices it at startup and every ~30 s, deletes it, generates a new password (logged once, change forced) and

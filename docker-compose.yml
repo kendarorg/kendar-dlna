@@ -25,6 +25,9 @@ services:
       KENDAR_PORT: ${KENDAR_PORT:-8200}
       # ffmpeg for WMA / APE: the image ships one on the PATH; set a path to use another binary.
       KENDAR_FFMPEG_PATH: ${KENDAR_FFMPEG_PATH:-}
+      # Optional: fixed admin account, applied at every start (see README "Admin account"). Empty = off.
+      KENDAR_ADMIN_USER: ${KENDAR_ADMIN_USER:-}
+      KENDAR_ADMIN_PASSWORD: ${KENDAR_ADMIN_PASSWORD:-}
     volumes:
       - ${MUSIC_DIR:?set MUSIC_DIR}:/music
       - ${PLAYLISTS_DIR:?set PLAYLISTS_DIR}:/playlists

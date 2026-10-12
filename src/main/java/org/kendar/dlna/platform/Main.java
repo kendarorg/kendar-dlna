@@ -174,6 +174,7 @@ public final class Main {
         IdentityService identity = new IdentityService(dataDir.resolve("users"),
                 List.copyOf(roots.roots().keySet()), config.library().effectiveMainRoot(), new PasswordHasher(),
                 sessions, Clock.systemUTC(), new SecureRandom(), IdentityService.logAnnouncer());
+        identity.applyAdminOverride(settings.apply("adminUser"), settings.apply("adminPassword"));
         identity.bootstrap(new ConfigAccountStore(configDir).load());
         identity.syncRoots(roots.roots().keySet());
         ResetPasswordWatcher resetWatcher = new ResetPasswordWatcher(configDir, identity);

@@ -108,6 +108,51 @@ public final class IdentityService {
     // ---- bootstrap, migration, configuration changes ----
 
     /**
+     * Administrator password given by the deployment ({@code KENDAR_ADMIN_PASSWORD}, plain text of at least
+     * {@value #MIN_PASSWORD_LENGTH} characters, or a stored {@code pbkdf2-sha256$...} hash), applied at every start,
+     * before {@link #bootstrap}: a missing administrator is created with it (no password is generated nor logged);
+     * the first administrator (or the one named {@code username}) gets it when it differs from the current password,
+     * without a forced change, and is signed out everywhere. Nothing is logged but the fact.
+     *
+     * @param username the administrator to create or update, null = the first administrator, else "admin"
+     * @param secret   the password or hash; null / blank = do nothing
+     * @return true when an account was created or its password replaced
+     */
+    public synchronized boolean applyAdminOverride(String username, String secret) {
+        if (secret == null || secret.isBlank()) {
+            return false;
+        }
+        boolean isHash = secret.startsWith("pbkdf2-sha256$");
+        if (!isHash && policyViolation(secret, null) != null) {
+            LOG.severe("KENDAR_ADMIN_PASSWORD is ignored: " + policyViolation(secret, null));
+            return false;
+        }
+        User admin = users.all().stream().filter(u -> u.role() == Role.ADMIN)
+                .filter(u -> username == null || u.username().equalsIgnoreCase(username))
+                .min(Comparator.comparing(User::createdAt)).orElse(null);
+        if (admin == null) {
+            String name = username != null ? username : DEFAULT_ADMIN;
+            if (users.byUsername(name).isPresent()) {
+                LOG.severe("KENDAR_ADMIN_USER '" + name + "' exists and is not an administrator: override ignored");
+                return false;
+            }
+            users.put(newUser(name, name, Role.ADMIN, isHash ? secret : hasher.hash(secret), false, List.of(), true));
+            LOG.warning("The admin account '" + name + "' was created with the password from the environment");
+            return true;
+        }
+        boolean same = isHash ? secret.equals(admin.passwordHash())
+                : admin.hasPassword() && hasher.verify(secret, admin.passwordHash());
+        if (same && !admin.mustChange()) {
+            return false;
+        }
+        users.put(admin.withPassword(isHash ? secret : hasher.hash(secret), false));
+        signOutEverywhere(admin.id());
+        invites.removeUser(admin.id());
+        LOG.warning("The password of '" + admin.username() + "' was set from the environment");
+        return true;
+    }
+
+    /**
      * First start of the user-store version: when there is no administrator yet, the admin of config.json is
      * migrated into the store (same hash and must-change flag); without one a random password is generated and
      * announced once. Later starts do nothing.

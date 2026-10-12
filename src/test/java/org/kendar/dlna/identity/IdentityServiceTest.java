@@ -538,4 +538,37 @@ class IdentityServiceTest {
         Access.requireDownload(lena);
         assertThatThrownBy(() -> Access.requireDownload(kim)).isInstanceOf(IdentityException.class);
     }
+
+    @Test
+    void thePasswordFromTheEnvironmentCreatesAndThenKeepsTheAdmin() {
+        IdentityService fresh = new IdentityService(tmp.resolve("env"), List.of("Music"), null, hasher,
+                new SessionStore(clock), clock, new SecureRandom(), announced::add);
+        assertThat(fresh.applyAdminOverride(null, "correct horse battery")).isTrue();
+        fresh.bootstrap(java.util.Optional.empty());
+        assertThat(announced).isEmpty();   // nothing generated, nothing logged
+        assertThat(fresh.authenticate("admin", "correct horse battery")).isPresent();
+        assertThat(fresh.userByName("admin").orElseThrow().mustChange()).isFalse();
+        assertThat(fresh.applyAdminOverride(null, "correct horse battery")).isFalse();   // restart: unchanged
+    }
+
+    @Test
+    void aDifferentPasswordFromTheEnvironmentReplacesTheCurrentOne() {
+        id.bootstrap(java.util.Optional.empty());
+        String generated = announcedPassword(0);
+        assertThat(id.applyAdminOverride(null, "a brand new secret")).isTrue();
+        assertThat(id.authenticate("admin", generated)).isEmpty();
+        assertThat(id.authenticate("admin", "a brand new secret")).isPresent();
+        assertThat(id.userByName("admin").orElseThrow().mustChange()).isFalse();
+    }
+
+    @Test
+    void aStoredHashAndAShortPasswordFromTheEnvironment() {
+        id.bootstrap(java.util.Optional.empty());
+        assertThat(id.applyAdminOverride(null, "short")).isFalse();
+        assertThat(id.applyAdminOverride(null, "   ")).isFalse();
+        String hash = hasher.hash("from a hash value");
+        assertThat(id.applyAdminOverride(null, hash)).isTrue();
+        assertThat(id.authenticate("admin", "from a hash value")).isPresent();
+        assertThat(id.applyAdminOverride(null, hash)).isFalse();
+    }
 }

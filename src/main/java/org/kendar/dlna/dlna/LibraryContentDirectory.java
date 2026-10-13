@@ -20,8 +20,9 @@ import org.kendar.dlna.shared.ClientId;
 /**
  * ContentDirectory:1 service backed by the catalog (Browse and Search).
  * <p>
- * GetSearchCapabilities returns the plan section 9 list; GetSortCapabilities is empty (ordering is decided by
- * settings.json, a client {@code SortCriteria} is ignored); SystemUpdateID follows the catalog snapshot version.
+ * GetSearchCapabilities returns the plan section 9 list; GetSortCapabilities lists {@link SortCriteria#CAPABILITIES}.
+ * Without a {@code SortCriteria} the order is the one of settings.json; with one, Browse children and Search hits
+ * are sorted before paging. SystemUpdateID follows the catalog snapshot version.
  */
 public final class LibraryContentDirectory extends AbstractContentDirectoryService {
 
@@ -37,7 +38,7 @@ public final class LibraryContentDirectory extends AbstractContentDirectoryServi
     private volatile String containerUpdateIDs = "";
 
     public LibraryContentDirectory(BrowseEngine engine) {
-        super(SEARCH_CAPABILITIES, List.of());
+        super(SEARCH_CAPABILITIES, SortCriteria.CAPABILITIES);
         this.engine = engine;
     }
 
@@ -84,10 +85,9 @@ public final class LibraryContentDirectory extends AbstractContentDirectoryServi
             @UpnpInputArgument(name = "SortCriteria") String orderBy,
             RemoteClientInfo remoteClientInfo) throws ContentDirectoryException {
         try {
-            // sort criteria are ignored on purpose: the order is the one configured in settings.json
             BrowseFlag flag = BrowseFlag.valueOrNullOf(browseFlag);
             return engine.browse(objectId, flag, filter, firstResult.getValue(), maxResults.getValue(),
-                    clientOf(remoteClientInfo), requestOf(remoteClientInfo));
+                    clientOf(remoteClientInfo), requestOf(remoteClientInfo), orderBy);
         } catch (ContentDirectoryException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -115,14 +115,24 @@ public final class LibraryContentDirectory extends AbstractContentDirectoryServi
             @UpnpInputArgument(name = "SortCriteria") String orderBy,
             RemoteClientInfo remoteClientInfo) throws ContentDirectoryException {
         try {
-            // sort criteria ignored on purpose: hits come in catalog display order
             return engine.search(containerId, searchCriteria, filter, firstResult.getValue(), maxResults.getValue(),
-                    requestOf(remoteClientInfo));
+                    requestOf(remoteClientInfo), orderBy);
         } catch (ContentDirectoryException e) {
             throw e;
         } catch (RuntimeException e) {
             throw new ContentDirectoryException(ContentDirectoryErrorCode.CANNOT_PROCESS, e.toString());
         }
+    }
+
+    private static String sortString(SortCriterion[] criteria) {
+        if (criteria == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (SortCriterion c : criteria) {
+            sb.append(sb.length() == 0 ? "" : ",").append(c.isAscending() ? '+' : '-').append(c.getPropertyName());
+        }
+        return sb.toString();
     }
 
     /** Address and headers of the caller, for profile matching; null when jUPnP gives none. */
@@ -151,8 +161,8 @@ public final class LibraryContentDirectory extends AbstractContentDirectoryServi
     public BrowseResult browse(String objectID, BrowseFlag browseFlag, String filter, long firstResult,
             long maxResults, SortCriterion[] orderby) throws ContentDirectoryException {
         try {
-            // orderby ignored on purpose: the order is the one configured in settings.json
-            return engine.browse(objectID, browseFlag, filter, firstResult, maxResults);
+            return engine.browse(objectID, browseFlag, filter, firstResult, maxResults, ClientId.UNKNOWN,
+                    ClientRequest.of(null, null), sortString(orderby));
         } catch (ContentDirectoryException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -164,8 +174,8 @@ public final class LibraryContentDirectory extends AbstractContentDirectoryServi
     public BrowseResult search(String containerId, String searchCriteria, String filter, long firstResult,
             long maxResults, SortCriterion[] orderBy) throws ContentDirectoryException {
         try {
-            // orderBy ignored on purpose: hits come in catalog display order
-            return engine.search(containerId, searchCriteria, filter, firstResult, maxResults);
+            return engine.search(containerId, searchCriteria, filter, firstResult, maxResults, null,
+                    sortString(orderBy));
         } catch (ContentDirectoryException e) {
             throw e;
         } catch (RuntimeException e) {

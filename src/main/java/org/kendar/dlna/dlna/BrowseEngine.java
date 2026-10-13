@@ -3,6 +3,7 @@ package org.kendar.dlna.dlna;
 import java.net.URI;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -65,6 +66,8 @@ public final class BrowseEngine {
     private static final String UNKNOWN_PARENT = "-1";
     /** UPnP ContentDirectory error codes for Search. */
     static final int SEARCH_CRITERIA_INVALID = 708;
+    /** UPnP error 709: the SortCriteria argument is malformed. */
+    static final int SORT_CRITERIA_INVALID = 709;
     static final int SEARCH_NO_SUCH_CONTAINER = 710;
 
     private final SnapshotHolder holder;
@@ -198,6 +201,18 @@ public final class BrowseEngine {
      */
     public BrowseResult browse(String objectId, BrowseFlag flag, String filterArg, long startingIndex, long count,
             ClientId client, ClientRequest request) throws ContentDirectoryException {
+        return browse(objectId, flag, filterArg, startingIndex, count, client, request, null);
+    }
+
+    /**
+     * Browse with a {@code SortCriteria}: the children are sorted (stable) before paging; null or blank keeps the
+     * order of the directory settings.
+     *
+     * @throws ContentDirectoryException 709 for a malformed sort criteria
+     */
+    public BrowseResult browse(String objectId, BrowseFlag flag, String filterArg, long startingIndex, long count,
+            ClientId client, ClientRequest request, String sortCriteria) throws ContentDirectoryException {
+        List<SortCriteria.Key> sort = parseSort(sortCriteria);
         ClientProfile profile = clients.resolve(request);
         DidlFilter filter = DidlFilter.parse(filterArg);
         Snapshot snap = holder.current();
@@ -217,6 +232,10 @@ public final class BrowseEngine {
                         "Not a container: " + objectId);
             }
             List<Node> kids = children(snap, node, client);
+            if (!sort.isEmpty()) {
+                kids = new ArrayList<>(kids);
+                kids.sort(nodeOrder(snap, sort));
+            }
             total = kids.size();
             int from = (int) Math.min(Math.max(startingIndex, 0), total);
             long end = count <= 0 || count >= total - from ? total : from + count;   // overflow-safe
@@ -249,6 +268,13 @@ public final class BrowseEngine {
     /** Search for an identified client (null request = the default profile). */
     public BrowseResult search(String containerId, String criteria, String filterArg, long startingIndex,
             long count, ClientRequest request) throws ContentDirectoryException {
+        return search(containerId, criteria, filterArg, startingIndex, count, request, null);
+    }
+
+    /** Search with a {@code SortCriteria}: the hits are sorted (stable) before paging. */
+    public BrowseResult search(String containerId, String criteria, String filterArg, long startingIndex,
+            long count, ClientRequest request, String sortCriteria) throws ContentDirectoryException {
+        List<SortCriteria.Key> sort = parseSort(sortCriteria);
         ClientProfile profile = clients.resolve(request);
         Query query;
         try {
@@ -260,6 +286,11 @@ public final class BrowseEngine {
         Snapshot snap = holder.current();
         SearchScope scope = searchScope(snap, containerId);
         List<SearchHit> hits = SearchEngine.search(snap, scope, query);
+        if (!sort.isEmpty()) {
+            hits = new ArrayList<>(hits);
+            Comparator<Node> byNode = nodeOrder(snap, sort);
+            hits.sort((x, y) -> byNode.compare(hitNode(x), hitNode(y)));
+        }
         long total = hits.size();
         int from = (int) Math.min(Math.max(startingIndex, 0), total);
         long end = count <= 0 || count >= total - from ? total : from + count;   // overflow-safe
@@ -277,6 +308,88 @@ public final class BrowseEngine {
         } catch (Exception e) {
             throw new ContentDirectoryException(ContentDirectoryErrorCode.CANNOT_PROCESS, e.toString());
         }
+    }
+
+    private static Node hitNode(SearchHit hit) {
+        return switch (hit) {
+            case SearchHit.TrackHit h -> new Node.TrackNode(h.track());
+            case SearchHit.FolderHit h -> new Node.FolderNode(h.folder());
+        };
+    }
+
+    private static List<SortCriteria.Key> parseSort(String criteria) throws ContentDirectoryException {
+        try {
+            return SortCriteria.parse(criteria);
+        } catch (SortCriteria.InvalidSortCriteriaException e) {
+            throw new ContentDirectoryException(SORT_CRITERIA_INVALID, e.getMessage());
+        }
+    }
+
+    /** Orders nodes by the keys in turn; objects without a value for a key come last, whatever the direction. */
+    private static Comparator<Node> nodeOrder(Snapshot snap, List<SortCriteria.Key> keys) {
+        return (a, b) -> {
+            for (SortCriteria.Key k : keys) {
+                Comparable<?> x = sortValue(snap, a, k.property());
+                Comparable<?> y = sortValue(snap, b, k.property());
+                if (x == null || y == null) {
+                    if (x == y) {
+                        continue;
+                    }
+                    return x == null ? 1 : -1;
+                }
+                int c = compareValues(x, y);
+                if (c != 0) {
+                    return k.ascending() ? c : -c;
+                }
+            }
+            return 0;
+        };
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private static int compareValues(Comparable x, Comparable y) {
+        if (x instanceof String sx && y instanceof String sy) {
+            return sx.compareToIgnoreCase(sy);
+        }
+        return x.compareTo(y);
+    }
+
+    /** The value of a sortable property for a node, or null when it has none. */
+    private static Comparable<?> sortValue(Snapshot snap, Node node, String property) {
+        Track track = switch (node) {
+            case Node.TrackNode t -> t.track();
+            case Node.ContextTrackNode t -> t.track();
+            default -> null;
+        };
+        if (property.equals("upnp:class")) {
+            return track != null ? "object.item.audioItem.musicTrack" : "object.container";
+        }
+        if (property.equals("dc:title")) {
+            return switch (node) {
+                case Node.TrackNode t -> DisplayNames.trackTitle(t.track());
+                case Node.ContextTrackNode t -> DisplayNames.trackTitle(t.track());
+                case Node.FolderNode f -> DisplayNames.folderTitle(f.folder());
+                case Node.PlaylistNode p -> p.playlist().name();
+                case Node.Root r -> "Root";
+                case Node.Folders f -> "Folders";
+                case Node.Playlists p -> "Playlists";
+                case Node.RandomNode r -> Shuffle.title(r.snapshot().requestedSize());
+                case Node.ViewGroupNode v -> v.node().title();
+            };
+        }
+        if (track == null) {
+            return null;
+        }
+        EffectiveTrack et = EffectiveTrack.of(track,
+                snap.folder(track.parentRef()).map(Folder::settings).orElse(DirectorySettings.DEFAULT));
+        return switch (property) {
+            case "dc:creator", "upnp:artist" -> firstNonBlank(track.tags().artist(), et.albumArtist());
+            case "upnp:album" -> et.album();
+            case "upnp:genre" -> et.genre();
+            case "upnp:originalTrackNumber" -> track.tags().trackNo();
+            case "dc:date" -> et.year();
+            default -> null;
+        };
     }
 
     private static SearchScope searchScope(Snapshot snap, String containerId) throws ContentDirectoryException {

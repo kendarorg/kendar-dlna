@@ -31,8 +31,9 @@ class LibraryContentDirectoryTest {
     }
 
     @Test
-    void sortCapabilitiesAreEmptyBecauseOrderComesFromSettings() {
-        assertThat(service(1).getSortCapabilities().toString()).isEmpty();
+    void sortCapabilitiesListTheSortableProperties() {
+        assertThat(service(1).getSortCapabilities().toString()).isEqualTo(
+                "dc:title,dc:creator,upnp:artist,upnp:album,upnp:genre,upnp:originalTrackNumber,dc:date,upnp:class");
     }
 
     @Test
@@ -41,7 +42,7 @@ class LibraryContentDirectoryTest {
     }
 
     @Test
-    void browseIgnoresSortCriteriaAndUnknownFilter() throws Exception {
+    void browseAcceptsSortCriteriaAndUnknownFilter() throws Exception {
         var r = service(3).browse("0", BrowseFlag.DIRECT_CHILDREN, "", 0, 0,
                 SortCriterion.valueOf("+dc:title,-upnp:artist"));
         assertThat(r.getTotalMatchesLong()).isEqualTo(2);

@@ -133,11 +133,21 @@ class SearchActionTest {
     }
 
     @Test
-    void sortCriteriaAreIgnoredAndOrderIsStable() throws Exception {
+    void sortCriteriaOrderTheHitsBeforePaging() throws Exception {
         String crit = "dc:title contains \"love\" and upnp:class derivedfrom \"object.item\"";
-        String a = service.search("0", crit, "*", 0, 0, SortCriterion.valueOf("-dc:title")).getResult();
-        String b = service.search("0", crit, "*", 0, 0, new SortCriterion[0]).getResult();
-        assertThat(a).isEqualTo(b);
+        java.util.function.Function<String, List<String>> titles = didl -> {
+            List<String> out = new java.util.ArrayList<>();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("<dc:title>([^<]*)</dc:title>").matcher(didl);
+            while (m.find()) {
+                out.add(m.group(1));
+            }
+            return out;
+        };
+        List<String> asc = titles.apply(service.search("0", crit, "*", 0, 0, SortCriterion.valueOf("+dc:title")).getResult());
+        List<String> desc = titles.apply(service.search("0", crit, "*", 0, 0, SortCriterion.valueOf("-dc:title")).getResult());
+        assertThat(asc).hasSizeGreaterThan(1).isSorted();
+        assertThat(desc).isEqualTo(new java.util.ArrayList<>(asc).reversed());
+        assertThat(service.search("0", crit, "*", 0, 0, new SortCriterion[0]).getResult()).isNotEmpty();
     }
 
     @Test

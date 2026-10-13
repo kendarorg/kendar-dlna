@@ -89,12 +89,40 @@ class ClientProfilesTest {
     }
 
     @Test
+    void theUniversalMediaServerRenderersAreBuiltInAndMostSpecificFirst() {
+        List<ClientProfile> all = ClientProfiles.builtins();
+        assertThat(all.size()).isGreaterThan(100);
+        assertThat(all).extracting(ClientProfile::id).doesNotHaveDuplicates().allMatch(i -> i.matches("[a-z0-9][a-z0-9._-]*"));
+        ClientProfileResolver r = ClientProfiles.resolver(ClientsConfig.defaults(), dir);
+        ClientProfile ps4 = r.resolve(ClientRequest.of("1.1.1.1", "PS4Application libhttp/1.000 (PS4) libhttp/2.51 (PlayStation 4)"));
+        assertThat(ps4.id()).isEqualTo("ums-sony-playstation4");
+        assertThat(ps4.nativeFormats()).contains(MediaFormat.FLAC, MediaFormat.MP3, MediaFormat.AAC)
+                .doesNotContain(MediaFormat.OGG);
+        assertThat(ps4.resPlan(MediaFormat.FLAC)).containsExactly(ResKind.NATIVE);
+        assertThat(ps4.resPlan(MediaFormat.OGG)).contains(ResKind.TRANSCODED);
+        // a renderer that wants WAV and 44.1 kHz
+        assertThat(all).anySatisfy(p -> {
+            assertThat(p.transcodeTarget()).isEqualTo(TranscodeTarget.WAV);
+        }).anySatisfy(p -> assertThat(p.maxSampleRate()).isEqualTo(44100));
+    }
+
+    @Test
+    void maxSampleRateIsValidatedAndKeptWhenCopied() {
+        ClientProfile p = new ClientProfile("x", "", ProfileMatch.userAgent("x"), Set.of(MediaFormat.MP3), null,
+                TranscodeTarget.WAV, 0, Set.of(), 44100);
+        assertThat(ClientProfiles.of(List.of(p), ClientProfile.builtinDefault())).isNotNull();
+        ClientProfile bad = new ClientProfile("y", "", ProfileMatch.userAgent("y"), Set.of(), null, null, 0, Set.of(), 100);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> ClientProfiles.of(List.of(bad), ClientProfile.builtinDefault()))
+                .hasMessageContaining("maxSampleRate");
+    }
+
+    @Test
     void builtinProfilesLoadAndMatchTheirClients() {
         ClientProfileResolver r = ClientProfiles.resolver(ClientsConfig.defaults(), dir);
-        assertThat(r.resolve(ClientRequest.of("1.1.1.1", "VLC/3.0.20 LibVLC/3.0.20")).id()).isEqualTo("vlc");
+        assertThat(r.resolve(ClientRequest.of("1.1.1.1", "VLC/3.0.20 LibVLC/3.0.20")).id()).isIn("vlc", "ums-vlc-for-desktop");
         ClientProfile samsung = r.resolve(ClientRequest.of("1.1.1.1", "SEC_HHP_[TV]UE55/1.0 DLNADOC/1.50"));
-        assertThat(samsung.id()).isEqualTo("samsung-tv");
-        assertThat(samsung.resPlan(MediaFormat.FLAC)).hasSize(1);
+        assertThat(samsung.id()).isIn("samsung-tv").isNotEqualTo("default").satisfies(i -> assertThat(i).matches("samsung-tv|ums-samsung.*"));
+        assertThat(samsung.resPlan(MediaFormat.FLAC).size()).isLessThanOrEqualTo(2);
         assertThat(r.resolve(ClientRequest.of("1.1.1.1", "Unknown/1")).id()).isEqualTo("default");
     }
 

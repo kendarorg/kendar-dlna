@@ -106,7 +106,7 @@ public final class ClientProfiles {
 
     private static ClientProfile withId(ClientProfile p, String id) {
         return new ClientProfile(id, p.description(), p.match(), p.nativeFormats(), p.resOrder(),
-                p.transcodeTarget(), p.bitrateKbps(), p.quirks());
+                p.transcodeTarget(), p.bitrateKbps(), p.quirks(), p.maxSampleRate());
     }
 
     static void validate(ClientProfile p, boolean isDefault, List<String> errors) {
@@ -122,6 +122,9 @@ public final class ClientProfiles {
         }
         if (p.bitrateKbps() != 0 && !ClientProfile.BITRATES.contains(p.bitrateKbps())) {
             errors.add("profile '" + id + "': bitrateKbps must be 0 or one of " + ClientProfile.BITRATES);
+        }
+        if (p.maxSampleRate() != 0 && (p.maxSampleRate() < 8_000 || p.maxSampleRate() > 768_000)) {
+            errors.add("profile '" + id + "': maxSampleRate must be 0 or between 8000 and 768000");
         }
         if (isDefault) {
             return;

@@ -2,7 +2,9 @@
 
 Nothing here has been verified with real renderers yet: this is the test plan. Fill in the result column as you go and
 turn each finding into a profile change (`clients` in `config.json`, or `/config/clients.json`). The profiles that ship
-in `src/main/resources/clients/builtin-profiles.json` are **provisional guesses**.
+in `src/main/resources/clients/builtin-profiles.json` are **unverified**: the `ums-*` ones were generated from the
+renderer files of the open source Universal Media Server (audio `Supported` formats, `TranscodeAudio`,
+`TranscodeAudioTo441kHz`, User-Agent / header match), the older `vlc`, `bubbleupnp`, ... ones are guesses.
 
 Run the server on a Linux host with host networking (see README), a small library (every format; one MIDI file; one
 album with `front.jpg`; one folder with `random`, `views` set; one playlist; one file with non-ASCII name) and

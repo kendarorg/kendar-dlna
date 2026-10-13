@@ -15,9 +15,18 @@ import java.util.Set;
  * @param transcodeTarget MP3 or LPCM
  * @param bitrateKbps     MP3 bitrate; 0 = the server's configured default
  * @param quirks          behaviour switches
+ * @param maxSampleRate  PCM based transcodes (LPCM, WAV, FLAC, ALAC) are resampled to at most this rate; 0 = the
+ *                       server's {@code transcode.output.maxSampleRate}
  */
 public record ClientProfile(String id, String description, ProfileMatch match, Set<MediaFormat> nativeFormats,
-        ResOrder resOrder, TranscodeTarget transcodeTarget, int bitrateKbps, Set<Mp3Quirk> quirks) {
+        ResOrder resOrder, TranscodeTarget transcodeTarget, int bitrateKbps, Set<Mp3Quirk> quirks,
+        int maxSampleRate) {
+
+    /** A profile without a sample rate cap of its own. */
+    public ClientProfile(String id, String description, ProfileMatch match, Set<MediaFormat> nativeFormats,
+            ResOrder resOrder, TranscodeTarget transcodeTarget, int bitrateKbps, Set<Mp3Quirk> quirks) {
+        this(id, description, match, nativeFormats, resOrder, transcodeTarget, bitrateKbps, quirks, 0);
+    }
 
     public static final String DEFAULT_ID = "default";
 
@@ -36,6 +45,7 @@ public record ClientProfile(String id, String description, ProfileMatch match, S
         resOrder = resOrder == null ? ResOrder.TRANSCODED_FIRST : resOrder;
         transcodeTarget = transcodeTarget == null ? TranscodeTarget.MP3 : transcodeTarget;
         quirks = quirks == null || quirks.isEmpty() ? Set.of() : Set.copyOf(quirks);
+        maxSampleRate = Math.max(0, maxSampleRate);
     }
 
     /** MP3 native, everything else transcoded to MP3 with the original offered second (plan section 11). */

@@ -32,6 +32,7 @@ public final class Snapshot {
     private final Map<RootRef, List<Child>> children;
     private final Map<RootRef, List<Child>> allChildren;
     private final List<Track> visibleTracks;
+    private final Map<RootRef, DirectorySettings> effective;
     private final Map<RootRef, List<String>> missingOrderEntries;
     private final List<ResolvedPlaylist> playlists;
     private final Map<String, ResolvedPlaylist> playlistById;
@@ -104,15 +105,44 @@ public final class Snapshot {
             requireParentFolder(fm, t.parentRef(), t.ref());
             subTracks.computeIfAbsent(t.parentRef(), k -> new ArrayList<>()).add(t);
         }
+        Map<RootRef, DirectorySettings> eff = new HashMap<>();
+        for (Folder f : fm.values()) {
+            effective(fm, f.ref(), eff);
+        }
+        this.effective = Collections.unmodifiableMap(eff);
+        Map<RootRef, IgnoreRules> rules = new HashMap<>();
+        for (Folder f : fm.values()) {
+            if (!f.settings().ignore().isEmpty()) {
+                rules.put(f.ref(), new IgnoreRules(f.settings().ignore()));
+            }
+        }
+        Map<RootRef, Boolean> ignoredMemo = new HashMap<>();
+        java.util.Set<RootRef> ignoredFolders = new java.util.HashSet<>();
+        java.util.Set<RootRef> ignoredTracks = new java.util.HashSet<>();
+        if (!rules.isEmpty()) {
+            for (Folder f : fm.values()) {
+                if (!f.isRoot() && ignored(f.ref(), true, rules, ignoredMemo)) {
+                    ignoredFolders.add(f.ref());
+                }
+            }
+            for (Track t : this.tracks) {
+                if (ignored(t.ref(), false, rules, ignoredMemo)) {
+                    ignoredTracks.add(t.ref());
+                }
+            }
+        }
         Map<RootRef, List<Child>> ch = new HashMap<>();
         Map<RootRef, List<Child>> all = new HashMap<>();
         Map<RootRef, List<String>> missing = new HashMap<>();
         for (Folder f : fm.values()) {
-            ChildSorter.Result r = ChildSorter.sort(f.settings(),
+            ChildSorter.Result r = ChildSorter.sort(eff.get(f.ref()),
                     subFolders.getOrDefault(f.ref(), List.of()), subTracks.getOrDefault(f.ref(), List.of()));
             all.put(f.ref(), List.copyOf(r.children()));
             ch.put(f.ref(), r.children().stream()
-                    .filter(c -> !(c instanceof Child.FolderChild fc && fc.folder().settings().hidden())).toList());
+                    .filter(c -> !(c instanceof Child.FolderChild fc
+                            && (fc.folder().settings().hidden() || ignoredFolders.contains(fc.folder().ref()))))
+                    .filter(c -> !(c instanceof Child.TrackChild tc && ignoredTracks.contains(tc.track().ref())))
+                    .toList());
             if (!r.missing().isEmpty()) {
                 missing.put(f.ref(), List.copyOf(r.missing()));
             }
@@ -126,7 +156,10 @@ public final class Snapshot {
         this.children = Collections.unmodifiableMap(ch);
         this.allChildren = Collections.unmodifiableMap(all);
         Map<RootRef, Boolean> hiddenMemo = new HashMap<>();
-        this.visibleTracks = this.tracks.stream().filter(t -> !hidden(fm, t.parentRef(), hiddenMemo)).toList();
+        this.visibleTracks = this.tracks.stream()
+                .filter(t -> !ignoredTracks.contains(t.ref()) && !hidden(fm, t.parentRef(), hiddenMemo)
+                        && !ignoredFolders.contains(t.parentRef()))
+                .toList();
         this.missingOrderEntries = Collections.unmodifiableMap(missing);
 
         java.util.Set<RootRef> unsupportedRefs = new java.util.HashSet<>();
@@ -157,6 +190,7 @@ public final class Snapshot {
         this.children = o.children;
         this.allChildren = o.allChildren;
         this.visibleTracks = o.visibleTracks;
+        this.effective = o.effective;
         this.missingOrderEntries = o.missingOrderEntries;
         this.playlists = o.playlists;
         this.playlistById = o.playlistById;
@@ -275,6 +309,69 @@ public final class Snapshot {
     /** The tracks outside every hidden directory. */
     public List<Track> visibleTracks() {
         return visibleTracks;
+    }
+
+    /**
+     * The settings in force for a directory: its own, completed with what it inherits from its parent
+     * ({@link DirectorySettings#inheritFrom}). {@code Folder.settings()} stays the directory's own file content.
+     */
+    public DirectorySettings effectiveSettings(RootRef folder) {
+        DirectorySettings s = effective.get(folder);
+        return s != null ? s : DirectorySettings.DEFAULT;
+    }
+
+    private static DirectorySettings effective(Map<RootRef, Folder> fm, RootRef ref,
+            Map<RootRef, DirectorySettings> memo) {
+        DirectorySettings known = memo.get(ref);
+        if (known != null) {
+            return known;
+        }
+        Folder f = fm.get(ref);
+        DirectorySettings s = f.settings();
+        if (!f.isRoot() && fm.containsKey(ref.parent())) {
+            s = s.inheritFrom(effective(fm, ref.parent(), memo));
+        }
+        memo.put(ref, s);
+        return s;
+    }
+
+    /** True when a hide pattern of this entry's directory or of an ancestor, or an ignored ancestor, hides it. */
+    private static boolean ignored(RootRef ref, boolean isDir, Map<RootRef, IgnoreRules> rules,
+            Map<RootRef, Boolean> memo) {
+        RootRef memoKey = isDir ? ref : null;
+        if (memoKey != null && memo.containsKey(memoKey)) {
+            return memo.get(memoKey);
+        }
+        RootRef parent = ref.parent();
+        boolean result = false;
+        if (!parent.isRoot() && ignored(parent, true, rules, memo)) {
+            result = true;
+        } else {
+            Boolean state = null;
+            List<RootRef> chain = new ArrayList<>();
+            for (RootRef a = parent;; a = a.parent()) {
+                chain.add(0, a);
+                if (a.isRoot()) {
+                    break;
+                }
+            }
+            for (RootRef a : chain) {
+                IgnoreRules r = rules.get(a);
+                if (r == null) {
+                    continue;
+                }
+                String rel = a.isRoot() ? ref.rel() : ref.rel().substring(a.rel().length() + 1);
+                Boolean m = r.match(rel, isDir);
+                if (m != null) {
+                    state = m;
+                }
+            }
+            result = Boolean.TRUE.equals(state);
+        }
+        if (memoKey != null) {
+            memo.put(memoKey, result);
+        }
+        return result;
     }
 
     private static boolean hidden(Map<RootRef, Folder> fm, RootRef ref, Map<RootRef, Boolean> memo) {

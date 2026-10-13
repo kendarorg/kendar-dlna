@@ -132,8 +132,20 @@ public final class SettingsParser {
                 }
                 bucket = n.get("bucketThreshold").asInt();
             }
+            List<String> ignore = new ArrayList<>();
+            if (n.has("ignore") && !n.get("ignore").isNull()) {
+                if (!n.get("ignore").isArray()) {
+                    return failure("ignore must be an array of patterns");
+                }
+                for (JsonNode e : n.get("ignore")) {
+                    if (!e.isTextual()) {
+                        return failure("ignore entries must be strings");
+                    }
+                    ignore.add(e.asText());
+                }
+            }
             return new Result(new DirectorySettings(sort, order, album, random, views, recent, displayName,
-                    keepWhole, bucket, hidden), null);
+                    keepWhole, bucket, hidden, ignore), null);
         } catch (IOException | RuntimeException e) {
             return failure("malformed JSON: " + e.getMessage().lines().findFirst().orElse(""));
         }

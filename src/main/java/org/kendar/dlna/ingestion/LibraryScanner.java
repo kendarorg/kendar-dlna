@@ -297,6 +297,22 @@ public class LibraryScanner {
         return r;
     }
 
+    /** keepWholeFiles of a directory or (inherited) of any ancestor; scans of a sub-tree fall back to the previous catalog. */
+    private boolean keepsWholeFiles(Path dir, String rootName, Path rootDir, Map<Path, DirList> lists,
+            Snapshot previous) {
+        for (Path p = dir; p != null && p.startsWith(rootDir); p = p.getParent()) {
+            DirList d = lists.get(p);
+            if (d == null) {
+                return previous != null
+                        && previous.effectiveSettings(refOf(rootName, rootDir, p)).keepWholeFiles();
+            }
+            if (d.folder().settings().keepWholeFiles()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void walk(String rootName, Path rootDir, Path start, List<Folder> folders,
             List<UnsupportedFile> unsupported, List<Pending> pending, Snapshot previous, List<Track> reused,
             ScanProgress progress, boolean force) {
@@ -358,7 +374,8 @@ public class LibraryScanner {
                         boolean listChanged = dl != null && dl.changed();
                         Track old = previous == null ? null : previous.track(ref).orElse(null);
                         CueDirectory.Match cue = dl == null ? null : dl.cues().get(ListJson.key(name));
-                        boolean keepWhole = dl != null && dl.folder().settings().keepWholeFiles();
+                        boolean keepWhole = dl != null && keepsWholeFiles(file.getParent(), rootName, rootDir, lists,
+                                previous);
                         Folder oldAlbum = !virtualAlbums || previous == null ? null
                                 : previous.folder(ref).filter(Folder::isVirtual).orElse(null);
                         boolean splitReuse = false;

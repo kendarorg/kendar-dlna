@@ -41,6 +41,7 @@ public final class FolderService {
     public static final String SETTINGS_FILE = "settings.json";
     public static final int MAX_ART_BYTES = 10 * 1024 * 1024;
     private static final int MAX_RANDOM = 100_000;
+    static final String DELETED_DIR = ".deleted";
     static final int MAX_DISPLAY_NAME = 255;
 
     public enum ArtKind {
@@ -124,10 +125,11 @@ public final class FolderService {
         boolean keepWhole = body.has("keepWholeFiles") ? next.keepWholeFiles() : folder.settings().keepWholeFiles();
         Integer bucket = body.has("bucketThreshold") ? next.bucketThreshold() : folder.settings().bucketThreshold();
         boolean hidden = body.has("hidden") ? next.hidden() : folder.settings().hidden();
+        List<String> ignore = body.has("ignore") ? next.ignore() : folder.settings().ignore();
         if (keepWhole != next.keepWholeFiles() || !java.util.Objects.equals(bucket, next.bucketThreshold())
-                || hidden != next.hidden()) {
+                || hidden != next.hidden() || !ignore.equals(next.ignore())) {
             next = new DirectorySettings(next.sort(), next.order(), next.album(), next.random(), next.views(),
-                    next.recent(), next.displayName(), keepWhole, bucket, hidden);
+                    next.recent(), next.displayName(), keepWhole, bucket, hidden, ignore);
         }
         validate(next);
         return store(folder, next);
@@ -230,6 +232,12 @@ public final class FolderService {
             out.put("hidden", true);
         } else {
             out.remove("hidden");
+        }
+        if (s.ignore().isEmpty()) {
+            out.remove("ignore");
+        } else {
+            ArrayNode ignore = out.putArray("ignore");
+            s.ignore().forEach(ignore::add);
         }
         if (s.keepWholeFiles()) {
             out.put("keepWholeFiles", true);
@@ -346,7 +354,8 @@ public final class FolderService {
         AlbumInfo album = new AlbumInfo(title, albumArtist, num(year), genre, num(disc), num(discTotal));
         DirectorySettings cur = folder.settings();
         DirectorySettings next = new DirectorySettings(cur.sort(), cur.order(), album, cur.random(), cur.views(),
-                cur.recent(), cur.displayName(), cur.keepWholeFiles(), cur.bucketThreshold(), cur.hidden());
+                cur.recent(), cur.displayName(), cur.keepWholeFiles(), cur.bucketThreshold(), cur.hidden(),
+                cur.ignore());
         if (write) {
             store(folder, next);
         }
@@ -604,12 +613,12 @@ public final class FolderService {
         try {
             org.kendar.dlna.ingestion.SidecarJson.locate(file).ifPresent(side -> {
                 try {
-                    Files.deleteIfExists(side);
+                    moveToDeleted(side);
                 } catch (IOException e) {
                     throw new java.io.UncheckedIOException(e);
                 }
             });
-            Files.delete(file);
+            moveToDeleted(file);
         } catch (IOException | java.io.UncheckedIOException e) {
             throw new CurationException(CurationException.IO_ERROR,
                     "Cannot delete " + ref + ": " + e.getMessage(), null, e);
@@ -651,22 +660,39 @@ public final class FolderService {
         }
         Path dir = directory(ref);
         try (java.util.stream.Stream<Path> kids = Files.list(dir)) {
-            if (!recursive && kids.findAny().isPresent()) {
+            if (!recursive && kids.anyMatch(k -> !k.getFileName().toString().equals(DELETED_DIR))) {
                 throw new CurationException(CurationException.CONFLICT, "The directory is not empty");
             }
         } catch (IOException e) {
             throw new CurationException(CurationException.IO_ERROR,
                     "Cannot read " + ref + ": " + e.getMessage(), null, e);
         }
-        try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
-            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
-                Files.delete(p);
-            }
+        try {
+            moveToDeleted(dir);
         } catch (IOException e) {
             throw new CurationException(CurationException.IO_ERROR,
                     "Cannot remove " + ref + ": " + e.getMessage(), null, e);
         }
         return ref.parent();
+    }
+
+    /**
+     * "Deletes" a file or directory by moving it into the {@value #DELETED_DIR} directory of its parent. Dot
+     * directories are never scanned, so nothing in there reaches a user or a DLNA client; the admin can restore
+     * or purge it on disk. A clashing name gets a timestamp suffix.
+     */
+    private static void moveToDeleted(Path p) throws IOException {
+        Path bin = p.getParent().resolve(DELETED_DIR);
+        Files.createDirectories(bin);
+        String name = p.getFileName().toString();
+        Path target = bin.resolve(name);
+        if (Files.exists(target)) {
+            target = bin.resolve(name + "." + System.currentTimeMillis());
+            for (int i = 1; Files.exists(target); i++) {
+                target = bin.resolve(name + "." + System.currentTimeMillis() + "-" + i);
+            }
+        }
+        Files.move(p, target);
     }
 
     private static String extension(String fileName) {
@@ -713,7 +739,7 @@ public final class FolderService {
         List<String> order = new ArrayList<>(s.order());
         order.replaceAll(n -> n.equals(oldName) ? newName : n);
         store(folder, new DirectorySettings(s.sort(), order, s.album(), s.random(), s.views(), s.recent(),
-                s.displayName(), s.keepWholeFiles(), s.bucketThreshold(), s.hidden()));
+                s.displayName(), s.keepWholeFiles(), s.bucketThreshold(), s.hidden(), s.ignore()));
     }
 
     // ---- helpers ----

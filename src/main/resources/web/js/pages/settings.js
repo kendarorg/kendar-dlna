@@ -41,6 +41,7 @@ function settingsForm(folder) {
     recent: s.recent || 0,
     keepWholeFiles: !!s.keepWholeFiles,
     hidden: !!s.hidden,
+    ignore: (s.ignore || []).join('\n'),
     bucketThreshold: s.bucketThreshold == null ? '' : s.bucketThreshold,
     views: s.views.slice(),
     storedOrder: s.order.slice()
@@ -69,6 +70,7 @@ function settingsBody(form) {
     recent: numberOrNull(form.recent) || 0,
     keepWholeFiles: !!form.keepWholeFiles,
     hidden: !!form.hidden,
+    ignore: form.ignore.split('\n').map(l => l.trim()).filter(l => l),
     bucketThreshold: numberOrNull(form.bucketThreshold),
     views: form.views
   };
@@ -229,6 +231,10 @@ export const SettingsPage = {
           <legend>{{ $t('settings.visibility') }}</legend>
           <label class="inline"><input type="checkbox" v-model="form.hidden" id="hidden-directory"> {{ $t('settings.hidden') }}</label>
           <p class="muted">{{ $t('settings.hidden.help') }}</p>
+          <label>Hide paths (one gitignore-style pattern per line)
+            <textarea v-model="form.ignore" rows="4" id="ignore-patterns" placeholder="*.tmp&#10;extras/&#10;/Bonus/**"></textarea>
+          </label>
+          <p class="muted">Matching files and directories, here and below, are hidden from users and DLNA clients; only the admin sees them. Supports * ? ** , a leading / (relative to this directory), a trailing / (directories only) and ! (show again).</p>
         </fieldset>
 
         <fieldset>

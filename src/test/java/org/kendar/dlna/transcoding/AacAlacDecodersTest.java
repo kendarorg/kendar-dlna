@@ -20,6 +20,20 @@ class AacAlacDecodersTest {
     @TempDir
     Path tmp;
 
+    private String ffmpegBefore;
+
+    /** These tests expect the Java decoders to refuse HE-AAC and friends, which ffmpeg (when present) would decode. */
+    @org.junit.jupiter.api.BeforeEach
+    void noFfmpeg() {
+        ffmpegBefore = Ffmpeg.binary();
+        Ffmpeg.configure("no-such-ffmpeg");
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void restoreFfmpeg() {
+        Ffmpeg.configure(ffmpegBefore);
+    }
+
     private static byte[] decode(SourceFormat f, Path p) throws IOException {
         try (AudioDecoder d = Decoders.open(f, p)) {
             return DecodersTest.readAll(d);

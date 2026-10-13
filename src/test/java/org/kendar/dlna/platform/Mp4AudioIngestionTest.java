@@ -32,7 +32,8 @@ class Mp4AudioIngestionTest {
     @BeforeEach
     void wiring() {
         reader = TranscodingWiring.create(
-                new AppConfig.Transcode(null, null, null, null, null, null, null, null, null), dir.resolve("data"))
+                new AppConfig.Transcode(null, null, null, null, null, null, null, null, null, "no-such-ffmpeg"),
+                dir.resolve("data"))
                 .tagReader();
     }
 

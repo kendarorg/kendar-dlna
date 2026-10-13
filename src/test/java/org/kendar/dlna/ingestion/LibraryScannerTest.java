@@ -52,7 +52,7 @@ class LibraryScannerTest {
         Files.createDirectories(music.resolve(".hidden"));
         Files.writeString(music.resolve("a.mp3"), "aaaa");
         Files.writeString(music.resolve("notes.txt"), "ignored");
-        Files.writeString(music.resolve("old.wv"), "no decoder");
+        Files.writeString(music.resolve("old.alac"), "no decoder");
         Files.writeString(music.resolve("tune.mid"), "midi");
         Files.writeString(music.resolve("broken.flac"), "bad");
         Files.writeString(music.resolve(".secret.mp3"), "hidden");
@@ -97,7 +97,7 @@ class LibraryScannerTest {
 
         Map<String, String> reasons = new LinkedHashMap<>();
         s.unsupported().forEach(u -> reasons.put(u.ref().qualified(), u.reason()));
-        assertThat(reasons.keySet()).containsExactlyInAnyOrder("main/old.wv", "main/tune.mid", "main/broken.flac");
+        assertThat(reasons.keySet()).containsExactlyInAnyOrder("main/old.alac", "main/tune.mid", "main/broken.flac");
         assertThat(reasons.get("main/tune.mid")).contains("not supported yet");
         assertThat(reasons.get("main/broken.flac")).contains("unreadable");
     }

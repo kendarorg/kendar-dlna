@@ -573,4 +573,103 @@ class PersonalApiTest {
         assertThat(lena.get("/me/playlists/nope").status()).isEqualTo(404);
         assertThat(lena.write("POST", "/me/playlists/copy", Map.of("source", "weird")).status()).isEqualTo(400);
     }
+
+    // ---- playlist files ----
+
+    private static ApiRequest importRequest(String path, String content, String... query) {
+        ApiRequest r = ApiRequest.of("POST", path).withBody(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        for (int i = 0; i < query.length; i += 2) {
+            r = r.withQuery(query[i], query[i + 1]);
+        }
+        return r;
+    }
+
+    @Test
+    void anyUserImportsAnM3uMatchingByCatalogPathAndByTheTailOfForeignPaths() {
+        Client admin = adminClient();
+        Client lena = userClient(admin, "lena", List.of("main"));
+        String m3u = "#EXTM3U\r\n#EXTINF:12,Someone - One\r\n" + ONE + "\r\n"
+                + "C:\\Music\\Old Disk\\Album\\02 TWO.flac\r\n"   // another machine: matched by the tail, any case
+                + "file:///home/me/music/Album/03%20three.mp3\n"      // URL form
+                + "http://radio.example/stream\n"                     // not a file
+                + "/music/Nothing/missing.flac\n"                     // not in the library
+                + EXTRA_PATH + "\n";                                    // a root lena may not use
+        ApiResponse r = lena.send(importRequest("/me/playlists/import", m3u, "filename", "C:\\x\\Road Trip.m3u"));
+        assertThat(r.status()).as(r.text()).isEqualTo(201);
+        JsonNode b = r.jsonBody();
+        assertThat(b.get("imported").asInt()).isEqualTo(3);
+        assertThat(b.get("total").asInt()).isEqualTo(6);
+        assertThat(b.get("playlist").get("name").asText()).isEqualTo("Road Trip");
+        assertThat(paths(b.get("playlist").get("entries"))).containsExactly(ONE, TWO, THREE);
+        assertThat(b.get("unmatched")).hasSize(3);
+        assertThat(b.get("unmatched").get(0).get("reason").asText()).isEqualTo("not_a_file");
+        assertThat(b.get("unmatched").get(1).get("reason").asText()).isEqualTo("not_found");
+        assertThat(b.get("unmatched").get(2).get("entry").asInt()).isEqualTo(6);
+        // it is an ordinary own playlist
+        assertThat(lena.ok(lena.get("/me/playlists")).get("playlists")).hasSize(1);
+    }
+
+    private static final String EXTRA_PATH = "extra/Disc/x.wav";
+
+    @Test
+    void importReadsPlsAppendsToAnExistingPlaylistAndRejectsFilesWithoutMatches() {
+        Client admin = adminClient();
+        Client lena = userClient(admin, "lena", List.of("main"));
+        String id = lena.createPlaylist("Mix", ONE).get("id").asText();
+        String pls = "[playlist]\r\nFile2=" + THREE + "\r\nTitle2=Three\r\nFile1=" + TWO + "\r\nNumberOfEntries=2\r\nVersion=2\r\n";
+        ApiResponse r = lena.send(importRequest("/me/playlists/" + id + "/import", pls));
+        assertThat(r.status()).as(r.text()).isEqualTo(200);
+        assertThat(paths(r.jsonBody().get("playlist").get("entries"))).containsExactly(ONE, TWO, THREE);
+        assertThat(r.jsonBody().get("playlist").get("version").asInt()).isEqualTo(2);
+        ApiResponse none = lena.send(importRequest("/me/playlists/import", "#EXTM3U\n/x/y/zzz.flac\n"));
+        assertThat(none.status()).isEqualTo(400);
+        assertThat(lena.send(importRequest("/me/playlists/import", "")).status()).isEqualTo(400);
+        assertThat(lena.send(importRequest("/me/playlists/nope/import", "#EXTM3U\n" + ONE + "\n")).status())
+                .isEqualTo(404);
+        assertThat(new Client().send(importRequest("/me/playlists/import", ONE)).status()).isEqualTo(401);
+    }
+
+    @Test
+    void importFindsAmbiguousTailsHonestlyAndNeverCrossesRoots() {
+        Client admin = adminClient();
+        Client lena = userClient(admin, "lena", List.of("main"));
+        ApiResponse r = lena.send(importRequest("/me/playlists/import", "x.wav\n" + ONE + "\n"));
+        assertThat(r.status()).isEqualTo(201);
+        assertThat(r.jsonBody().get("imported").asInt()).isEqualTo(1);   // x.wav only exists in "extra"
+        assertThat(r.jsonBody().get("unmatched").get(0).get("reason").asText()).isEqualTo("not_found");
+        assertThat(r.jsonBody().get("playlist").get("name").asText()).isEqualTo("Imported playlist");
+    }
+
+    @Test
+    void exportWritesM3uAndPlsOfTheOwnPlaylistWithOnlyAccessibleTracks() {
+        Client admin = adminClient();
+        String id = admin.createPlaylist("Road: Trip", ONE, TWO, EXTRA_PATH).get("id").asText();
+        ApiResponse m3u = admin.get("/me/playlists/" + id + "/export", "format", "m3u8");
+        assertThat(m3u.status()).isEqualTo(200);
+        assertThat(m3u.contentType()).startsWith("audio/mpegurl");
+        assertThat(m3u.headers().get("Content-Disposition")).contains("Road_ Trip.m3u8");
+        String text = m3u.text();
+        assertThat(text).startsWith("#EXTM3U\r\n").contains("#EXTINF:").contains("\r\n" + ONE + "\r\n")
+                .contains("\r\n" + TWO + "\r\n").contains(EXTRA_PATH);
+        ApiResponse pls = admin.get("/me/playlists/" + id + "/export", "format", "pls");
+        assertThat(pls.text()).startsWith("[playlist]").contains("File1=" + ONE).contains("File3=" + EXTRA_PATH)
+                .contains("NumberOfEntries=3").contains("Version=2");
+        assertThat(admin.get("/me/playlists/" + id + "/export", "format", "m3u", "root", "false").text())
+                .contains("\r\nAlbum/01 one.wav\r\n");
+        assertThat(admin.get("/me/playlists/" + id + "/export", "format", "xspf").status()).isEqualTo(400);
+        assertThat(admin.get("/me/playlists/unknown/export").status()).isEqualTo(404);
+        // a round trip gives the same tracks back
+        ApiResponse back = admin.send(importRequest("/me/playlists/import", m3u.text(), "name", "Again"));
+        assertThat(paths(back.jsonBody().get("playlist").get("entries"))).containsExactly(ONE, TWO, EXTRA_PATH);
+    }
+
+    @Test
+    void anotherUsersPlaylistCannotBeExportedOrImportedInto() {
+        Client admin = adminClient();
+        Client lena = userClient(admin, "lena", List.of("main"));
+        Client tom = userClient(admin, "tom", List.of("main"));
+        String id = lena.createPlaylist("Mine", ONE).get("id").asText();
+        assertThat(tom.get("/me/playlists/" + id + "/export").status()).isEqualTo(404);
+        assertThat(tom.send(importRequest("/me/playlists/" + id + "/import", ONE)).status()).isEqualTo(404);
+    }
 }

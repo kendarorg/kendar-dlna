@@ -21,6 +21,7 @@ final class FlacDecoder extends FixedLengthDecoder {
     private final int sampleRate;
     private final int channels;
     private final int bits;
+    private final boolean wide;
     private InputStream in;
     private FLACDecoder decoder;
     private final ByteData frameData = new ByteData(1 << 16);
@@ -30,6 +31,11 @@ final class FlacDecoder extends FixedLengthDecoder {
     private boolean ended;
 
     static FlacDecoder open(Path file) throws IOException {
+        return open(file, false);
+    }
+
+    /** @param wide deliver stereo s24le (6-byte frames) instead of s16le */
+    static FlacDecoder open(Path file, boolean wide) throws IOException {
         StreamInfo info;
         try (InputStream in = new BufferedInputStream(Files.newInputStream(file))) {
             FLACDecoder d = new FLACDecoder(in);
@@ -42,11 +48,12 @@ final class FlacDecoder extends FixedLengthDecoder {
         if (bps != 8 && bps != 16 && bps != 24) {
             throw new IOException("Unsupported FLAC bit depth " + bps);
         }
-        return new FlacDecoder(file, info);
+        return new FlacDecoder(file, info, wide);
     }
 
-    private FlacDecoder(Path file, StreamInfo info) throws IOException {
-        super(info.getTotalSamples());
+    private FlacDecoder(Path file, StreamInfo info, boolean wide) throws IOException {
+        super(info.getTotalSamples(), wide ? 6 : 4);
+        this.wide = wide;
         this.file = file;
         this.sampleRate = info.getSampleRate();
         this.channels = info.getChannels();
@@ -110,11 +117,16 @@ final class FlacDecoder extends FixedLengthDecoder {
                 raw[i] ^= (byte) 0x80;   // JFLAC emits unsigned 8-bit
             }
         }
-        byte[] out = new byte[block * 4];
-        StereoPcm.toStereo16(raw, 0, block, channels, bytesPerSample, bits, out, 0);
+        int fb = frameBytes();
+        byte[] out = new byte[block * fb];
+        if (wide) {
+            StereoPcm.toStereo24(raw, 0, block, channels, bytesPerSample, bits, out, 0);
+        } else {
+            StereoPcm.toStereo16(raw, 0, block, channels, bytesPerSample, bits, out, 0);
+        }
         int skip = (int) Math.min(discard, block);
         discard -= skip;
-        pending = skip == 0 ? out : java.util.Arrays.copyOfRange(out, skip * 4, out.length);
+        pending = skip == 0 ? out : java.util.Arrays.copyOfRange(out, skip * fb, out.length);
         pendingPos = 0;
         return true;
     }

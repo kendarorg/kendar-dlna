@@ -17,7 +17,37 @@ public final class Ffmpeg {
     private static volatile String binary = DEFAULT_BINARY;
     private static volatile String version;
 
+    private static volatile int dsdPcmRate = 44_100;
+    private static volatile boolean dsdDop;
+
     private Ffmpeg() {
+    }
+
+    /** DSD to PCM: the 44.1 kHz-family rate DSD is decimated to (44100, 88200 or 176400; the 48 kHz family scales with it). */
+    public static void configureDsd(int pcmRate, boolean dop) {
+        dsdPcmRate = pcmRate;
+        dsdDop = dop;
+    }
+
+    public static int dsdPcmRate() {
+        return dsdPcmRate;
+    }
+
+    /** Whether DSD is delivered as DoP (DSD over PCM, 24-bit) instead of decimated PCM. */
+    public static boolean dsdDop() {
+        return dsdDop;
+    }
+
+    /**
+     * The PCM rate delivered for a stream of {@code hz}: the source rate, except for DSD (megahertz rates), which is
+     * decimated to {@link #dsdPcmRate()} (scaled to the 48 kHz family for multiples of 48 kHz).
+     */
+    public static int outputRate(int hz) {
+        if (hz <= 192_000) {
+            return hz;
+        }
+        boolean family48 = hz % 48_000 == 0 && hz % 44_100 != 0;
+        return family48 ? (int) (dsdPcmRate * 48_000L / 44_100) : dsdPcmRate;
     }
 
     /**

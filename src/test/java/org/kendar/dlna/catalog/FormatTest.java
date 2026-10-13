@@ -17,10 +17,10 @@ class FormatTest {
     }
 
     @Test
-    void dsdIsAFormatWhileAudiobooksAreNot() {
+    void dsdAndAudiobooksAreFormatsDecodedByFfmpeg() {
         assertThat(Format.fromFileName("a.dsf")).contains(Format.DSD);
         assertThat(Format.fromFileName("a.dff")).contains(Format.DSD);
-        assertThat(Format.fromFileName("a.m4b")).isEmpty();
+        assertThat(Format.fromFileName("a.m4b")).contains(Format.M4B);
     }
 
     @Test

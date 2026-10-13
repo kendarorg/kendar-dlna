@@ -12,6 +12,11 @@ public interface AudioDecoder extends AutoCloseable {
 
     int sampleRate();
 
+    /** Bytes of one sample frame: 4 (stereo s16le, the default) or 6 (stereo s24le, see {@link Decoders#open(SourceFormat, java.nio.file.Path, int)}). */
+    default int frameBytes() {
+        return 4;
+    }
+
     /** Exact number of sample frames (per channel) the decoder yields from position 0. */
     long totalSamples();
 
@@ -19,7 +24,7 @@ public interface AudioDecoder extends AutoCloseable {
     void seek(long frame) throws IOException;
 
     /**
-     * Reads up to {@code len} bytes (a multiple of 4 is always returned) into {@code buf}.
+     * Reads up to {@code len} bytes (a multiple of {@link #frameBytes()} is always returned) into {@code buf}.
      *
      * @return the number of bytes, or -1 at the end of the stream
      */

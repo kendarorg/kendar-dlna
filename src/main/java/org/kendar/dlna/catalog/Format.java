@@ -30,7 +30,13 @@ public enum Format {
     /** Monkey's Audio ({@code .ape}); read and decoded through the external ffmpeg. */
     APE("ape"),
     /** DSD audio ({@code .dsf}, {@code .dff}), decimated to PCM by the external ffmpeg. */
-    DSD("dsf", "dff");
+    DSD("dsf", "dff"),
+    /** WavPack ({@code .wv}); read and decoded through the external ffmpeg. */
+    WAVPACK("wv"),
+    /** Musepack ({@code .mpc}); read and decoded through the external ffmpeg. */
+    MPC("mpc"),
+    /** MPEG-4 audiobook ({@code .m4b}); read and decoded through the external ffmpeg. */
+    M4B("m4b");
 
     private final List<String> extensions;
 
@@ -58,7 +64,7 @@ public enum Format {
      */
     /** Formats without a Java decoder: they need the ffmpeg binary. */
     public boolean needsFfmpeg() {
-        return this == WMA || this == APE || this == DSD;
+        return this == WMA || this == APE || this == DSD || this == WAVPACK || this == MPC || this == M4B;
     }
 
     public List<String> editableFields() {

@@ -30,6 +30,7 @@ public final class FfmpegTagReader implements TagReader {
     private static final Pattern YEAR = Pattern.compile("(?<![\\p{N}])(\\d{4})(?![\\p{N}])");
 
     private final String binary;
+    private final java.util.function.IntUnaryOperator rateMapper;
     private final boolean usable;
     private final String unavailableReason;
 
@@ -39,6 +40,13 @@ public final class FfmpegTagReader implements TagReader {
      * @param unavailableReason shown in the unsupported-files list when not usable
      */
     public FfmpegTagReader(String binary, boolean usable, String unavailableReason) {
+        this(binary, usable, unavailableReason, FfmpegTagReader::decimated);
+    }
+
+    /** @param rateMapper the PCM rate delivered for a stream of the given rate (DSD is decimated by the decoder) */
+    public FfmpegTagReader(String binary, boolean usable, String unavailableReason,
+            java.util.function.IntUnaryOperator rateMapper) {
+        this.rateMapper = rateMapper;
         this.binary = binary;
         this.usable = usable;
         this.unavailableReason = unavailableReason;
@@ -95,7 +103,7 @@ public final class FfmpegTagReader implements TagReader {
         if (!audio.find()) {
             throw new TagReadException("no audio stream in " + file.getFileName(), null, true);
         }
-        int rate = outputRate(Integer.parseInt(audio.group(1)));
+        int rate = rateMapper.applyAsInt(Integer.parseInt(audio.group(1)));
         int channels = channels(audio.group(2));
         long millis = 0;
         Matcher d = DURATION.matcher(stderr);
@@ -111,8 +119,8 @@ public final class FfmpegTagReader implements TagReader {
         return new TrackMeta(tags(stdout), millis, bitrate, rate, channels, false);
     }
 
-    /** Same mapping as the decoder: DSD (megahertz rates) is decimated to 44.1 kHz, or 48 kHz for that family. */
-    private static int outputRate(int hz) {
+    /** Default mapping: DSD (megahertz rates) is decimated to 44.1 kHz, or 48 kHz for that family. */
+    private static int decimated(int hz) {
         if (hz <= 192_000) {
             return hz;
         }

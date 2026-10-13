@@ -148,6 +148,55 @@ public final class ConfigLoader {
         if (tc.midiMaxTailSeconds() < 0 || tc.midiMaxTailSeconds() > 120) {
             throw new ConfigException("transcode.midiMaxTailSeconds must be between 0 and 120");
         }
+        AppConfig.Output out = tc.output();
+        if (out.bitDepth() != 16 && out.bitDepth() != 24) {
+            throw new ConfigException("transcode.output.bitDepth must be 16 or 24, got " + out.bitDepth());
+        }
+        if (out.maxSampleRate() != 0 && (out.maxSampleRate() < 8_000 || out.maxSampleRate() > 768_000)) {
+            throw new ConfigException("transcode.output.maxSampleRate must be 0 or between 8000 and 768000");
+        }
+        if (out.dsdPcmRate() != 44_100 && out.dsdPcmRate() != 88_200 && out.dsdPcmRate() != 176_400) {
+            throw new ConfigException("transcode.output.dsdPcmRate must be 44100, 88200 or 176400");
+        }
+        if (!out.dsdMode().equals("pcm") && !out.dsdMode().equals("dop")) {
+            throw new ConfigException("transcode.output.dsdMode must be \"pcm\" or \"dop\"");
+        }
+        for (String p : tc.passthrough()) {
+            if (!p.equals("wav") && !p.equals("mp3")) {
+                throw new ConfigException("transcode.passthrough may only list \"wav\" and \"mp3\", got \"" + p + "\"");
+            }
+        }
+        java.util.Set<String> actions = java.util.Set.of("native", "mp3", "lpcm", "wav", "flac", "alac");
+        int ruleNo = 0;
+        for (AppConfig.Rule r : tc.rules()) {
+            ruleNo++;
+            String at = "transcode.rules[" + ruleNo + "]";
+            if (!actions.contains(r.action())) {
+                throw new ConfigException(at + ".action must be one of " + new java.util.TreeSet<>(actions)
+                        + ", got \"" + r.action() + "\"");
+            }
+            for (String f : r.formats()) {
+                try {
+                    org.kendar.dlna.catalog.Format.valueOf(f);
+                } catch (IllegalArgumentException e) {
+                    throw new ConfigException(at + ".formats: unknown format \"" + f + "\"");
+                }
+            }
+            if (r.bitrateKbps() != 0 && !org.kendar.dlna.clients.ClientProfile.BITRATES.contains(r.bitrateKbps())) {
+                throw new ConfigException(at + ".bitrateKbps must be 0 or one of "
+                        + org.kendar.dlna.clients.ClientProfile.BITRATES);
+            }
+            if (r.outputBitDepth() != null && r.outputBitDepth() != 16 && r.outputBitDepth() != 24) {
+                throw new ConfigException(at + ".outputBitDepth must be 16 or 24");
+            }
+            if (r.outputMaxSampleRate() != null && r.outputMaxSampleRate() != 0
+                    && (r.outputMaxSampleRate() < 8_000 || r.outputMaxSampleRate() > 768_000)) {
+                throw new ConfigException(at + ".outputMaxSampleRate must be 0 or between 8000 and 768000");
+            }
+            if (r.minSampleRate() < 0 || r.maxSampleRate() < 0 || r.minBitrateKbps() < 0 || r.maxBitrateKbps() < 0) {
+                throw new ConfigException(at + ": sample rate and bitrate limits must not be negative");
+            }
+        }
         try {
             org.kendar.dlna.ingestion.CronExpression.parse(cfg.scan().cron());
         } catch (IllegalArgumentException e) {

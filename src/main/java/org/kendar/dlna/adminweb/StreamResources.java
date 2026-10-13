@@ -145,7 +145,7 @@ final class StreamResources {
 
     /** Native when the client plays the format (never MIDI) or nothing can transcode it; else MP3. */
     StreamVariant choose(Track t, Set<String> formats) {
-        boolean nativeOk = !t.format().rendered() && !t.isSegment() && formats.contains(t.format().name().toLowerCase(Locale.ROOT));
+        boolean nativeOk = !t.format().rendered() && (!t.isSegment() || (transcoding != null && transcoding.canSlice(t))) && formats.contains(t.format().name().toLowerCase(Locale.ROOT));
         if (nativeOk) {
             return StreamVariant.NATIVE;
         }

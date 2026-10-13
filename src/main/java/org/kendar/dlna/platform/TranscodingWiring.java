@@ -25,7 +25,7 @@ import org.kendar.dlna.transcoding.Transcoder;
 final class TranscodingWiring {
 
     /** Bump when the set of readable formats changes: forces one full scan to re-evaluate unsupported files. */
-    private static final String CAPABILITY_VERSION = "v10";
+    private static final String CAPABILITY_VERSION = "v12";
 
     private static final Logger LOG = Logger.getLogger(TranscodingWiring.class.getName());
 
@@ -47,6 +47,7 @@ final class TranscodingWiring {
     private boolean transcodingEnabled;
 
     static TranscodingWiring create(AppConfig.Transcode tc, Path dataDir) {
+        Ffmpeg.configureDsd(tc.output().dsdPcmRate(), tc.output().dop());
         String ffmpeg = Ffmpeg.configure(tc.ffmpegPath());
         TranscodingWiring w = build(tc, dataDir);
         w.ffmpegVersion = ffmpeg;
@@ -104,7 +105,7 @@ final class TranscodingWiring {
     TagReader plainTagReader() {
         return new CompositeTagReader(new JAudioTaggerReader(), new OpusTagReader(),
                 new MidiTagReader(midiAvailable, midiReason), new AbcTagReader(midiAvailable, midiReason),
-                new FfmpegTagReader(ffmpegBinary, ffmpegUsable(), String.valueOf(ffmpegProblem())));
+                new FfmpegTagReader(ffmpegBinary, ffmpegUsable(), String.valueOf(ffmpegProblem()), Ffmpeg::outputRate));
     }
 
     /** The tag reader for all formats this installation can serve, with exact sample counts. */
@@ -114,7 +115,8 @@ final class TranscodingWiring {
 
     /** Appended to the roots fingerprint of the persisted index. */
     String fingerprintSuffix() {
-        return "|" + CAPABILITY_VERSION + (midiAvailable ? "+midi" : "") + (ffmpegUsable() ? "+ffmpeg" : "");
+        return "|" + CAPABILITY_VERSION + (midiAvailable ? "+midi" : "") + (ffmpegUsable() ? "+ffmpeg" : "")
+                + (Ffmpeg.dsdPcmRate() != 44_100 || Ffmpeg.dsdDop() ? "+dsd" + Ffmpeg.dsdPcmRate() + (Ffmpeg.dsdDop() ? "dop" : "") : "");
     }
 
     String midiReason() {

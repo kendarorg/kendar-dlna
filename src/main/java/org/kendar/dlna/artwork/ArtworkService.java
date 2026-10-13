@@ -20,6 +20,7 @@ import org.kendar.dlna.catalog.Folder;
 import org.kendar.dlna.catalog.Snapshot;
 import org.kendar.dlna.catalog.SnapshotHolder;
 import org.kendar.dlna.catalog.Track;
+import org.kendar.dlna.shared.ArtNames;
 import org.kendar.dlna.shared.RootRef;
 
 /**
@@ -138,17 +139,32 @@ public final class ArtworkService {
         if (folder.get().isVirtual()) {
             dir = dir.parent();   // an album inside a file shares the front.jpg of the directory holding the file
         }
-        Path p = files.resolve(dir.child(name));
-        if (p == null) {
+        Path dirPath = files.resolve(dir);
+        if (dirPath == null) {
             return Optional.empty();
         }
+        // front.jpg first, then cover.jpg, folder.png, ...: the best image of the directory (see ArtNames)
+        java.util.List<String> names = new java.util.ArrayList<>();
+        try (java.nio.file.DirectoryStream<Path> ds = Files.newDirectoryStream(dirPath)) {
+            for (Path c : ds) {
+                names.add(c.getFileName().toString());
+            }
+        } catch (IOException e) {
+            return Optional.empty();   // removed since the scan
+        }
+        Optional<String> picked = name.equals(REAR) ? ArtNames.pickRear(names) : ArtNames.pickFront(names);
+        if (picked.isEmpty()) {
+            return Optional.empty();
+        }
+        String fileName = picked.get();
+        Path p = dirPath.resolve(fileName);
         try {
             BasicFileAttributes a = Files.readAttributes(p, BasicFileAttributes.class);
             if (!a.isRegularFile()) {
                 return Optional.empty();
             }
             long mtime = a.lastModifiedTime().toMillis();
-            return Optional.of(new Source("file:" + dir.child(name).qualified(), mtime + "/" + a.size(), mtime,
+            return Optional.of(new Source("file:" + dir.child(fileName).qualified(), mtime + "/" + a.size(), mtime,
                     () -> Files.readAllBytes(p)));
         } catch (IOException e) {
             return Optional.empty();   // removed since the scan

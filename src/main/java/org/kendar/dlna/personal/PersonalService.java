@@ -414,6 +414,133 @@ public final class PersonalService {
         });
     }
 
+    // ---- playlist files (M3U / M3U8 / PLS) ----
+
+    /**
+     * An own playlist as a playlist file. Entries outside the user's allowed roots or no longer in the catalog are
+     * left out. Locations are catalog paths ({@code Root/dir/file.flac}), or without the root name when
+     * {@code withoutRoot}.
+     */
+    public PlaylistFiles.Output exportPlaylist(User me, String id, String format, boolean withoutRoot) {
+        PlaylistFiles.Format f;
+        try {
+            f = PlaylistFiles.Format.parse(format);
+        } catch (IllegalArgumentException e) {
+            throw new PersonalException("invalid", e.getMessage());
+        }
+        Snapshot snap = snapshot.get();
+        return with(me.id(), s -> {
+            PlaylistData p = find(s, id);
+            List<PlaylistFiles.Item> items = new ArrayList<>(p.tracks.size());
+            for (String path : p.tracks) {
+                RootRef ref;
+                try {
+                    ref = RootRef.parse(path);
+                } catch (IllegalArgumentException e) {
+                    continue;
+                }
+                if (!me.mayAccess(ref.root())) {
+                    continue;
+                }
+                Optional<Track> t = snap.track(ref);
+                if (t.isEmpty()) {
+                    continue;
+                }
+                String artist = t.get().tags().artist();
+                String title = DisplayNames.trackTitle(t.get());
+                String location = withoutRoot ? ref.qualified().substring(ref.root().length() + 1) : ref.qualified();
+                items.add(new PlaylistFiles.Item(location,
+                        artist == null || artist.isBlank() ? title : artist + " - " + title,
+                        t.get().durationMillis()));
+            }
+            return PlaylistFiles.write(f, p.name, items);
+        });
+    }
+
+    /**
+     * Reads a playlist file (M3U, M3U8 or PLS) and matches its entries to tracks of the user's allowed roots: an exact
+     * catalog path, else the longest tail of the entry's path that identifies one track (so files exported from
+     * another machine, with their own folders, still match). With {@code targetId} the tracks are appended to that
+     * playlist, otherwise a new playlist called {@code name} is made.
+     *
+     * @return {@code playlist} (detail), {@code imported}, {@code total} entries and {@code unmatched} entries
+     */
+    public Map<String, Object> importPlaylist(User me, String targetId, String name, byte[] data) {
+        List<PlaylistFiles.Entry> entries = PlaylistFiles.parse(data);
+        if (entries.isEmpty()) {
+            throw new PersonalException("invalid", "The file holds no playlist entries");
+        }
+        Snapshot snap = snapshot.get();
+        Map<String, List<Track>> byName = new java.util.HashMap<>();
+        for (Track t : snap.tracks()) {
+            if (!t.isSegment() && me.mayAccess(t.ref().root())) {
+                byName.computeIfAbsent(t.fileName().toLowerCase(Locale.ROOT), k -> new ArrayList<>()).add(t);
+            }
+        }
+        List<String> matched = new ArrayList<>();
+        List<Object> unmatched = new ArrayList<>();
+        int n = 0;
+        for (PlaylistFiles.Entry e : entries) {
+            n++;
+            String[] reason = new String[1];
+            Track t = match(snap, me, byName, e.location(), reason);
+            if (t != null) {
+                matched.add(t.ref().qualified());
+            } else {
+                unmatched.add(obj("entry", n, "location", e.location(), "title", e.title(), "reason", reason[0]));
+            }
+        }
+        if (matched.isEmpty()) {
+            throw new PersonalException("invalid", "None of the " + entries.size()
+                    + " entries matched a track of your library");
+        }
+        Map<String, Object> detail = targetId == null
+                ? createPlaylist(me, name == null || name.isBlank() ? "Imported playlist" : name, null, matched)
+                : addTracks(me, targetId, Precondition.NONE, matched, null);
+        return obj("playlist", detail, "imported", matched.size(), "total", entries.size(), "unmatched", unmatched);
+    }
+
+    private static Track match(Snapshot snap, User me, Map<String, List<Track>> byName, String location,
+            String[] reason) {
+        List<String> segs = PlaylistFiles.segments(location);
+        if (segs.isEmpty()) {
+            reason[0] = "not_a_file";
+            return null;
+        }
+        if (segs.size() >= 2) {
+            try {
+                RootRef ref = RootRef.parse(String.join("/", segs));
+                if (me.mayAccess(ref.root())) {
+                    Optional<Track> t = snap.track(ref);
+                    if (t.isPresent() && !t.get().isSegment()) {
+                        return t.get();
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {
+                // not a catalog path: matched by its tail below
+            }
+        }
+        List<Track> named = byName.getOrDefault(segs.get(segs.size() - 1).toLowerCase(Locale.ROOT), List.of());
+        for (int len = segs.size(); len >= 1; len--) {
+            String tail = "/" + String.join("/", segs.subList(segs.size() - len, segs.size())).toLowerCase(Locale.ROOT);
+            List<Track> hits = new ArrayList<>();
+            for (Track t : named) {
+                if (("/" + t.ref().qualified().toLowerCase(Locale.ROOT)).endsWith(tail)) {
+                    hits.add(t);
+                }
+            }
+            if (hits.size() == 1) {
+                return hits.get(0);
+            }
+            if (hits.size() > 1) {
+                reason[0] = "ambiguous";
+                return null;
+            }
+        }
+        reason[0] = "not_found";
+        return null;
+    }
+
     public void deletePlaylist(User me, String id, Precondition pre) {
         with(me.id(), s -> {
             PlaylistData p = find(s, id);

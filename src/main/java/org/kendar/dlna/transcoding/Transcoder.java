@@ -97,6 +97,65 @@ public final class Transcoder {
         }
     }
 
+    /**
+     * Any output form of the source (or of the sample range [startSample, endSample) when {@code startSample >= 0}) from
+     * {@code byteOffset}; {@code maxRate} resampling and 24-bit decoding come from {@code output}.
+     */
+    public InputStream open(SourceFormat format, Path file, TranscodeOutput output, long byteOffset, long startSample,
+            long endSample) throws IOException {
+        AudioDecoder d = Decoders.open(format, file, output.decoderBits());
+        return stream(prepare(d, startSample, endSample, output), output, byteOffset);
+    }
+
+    /** Any output form of an in-memory render (MIDI, ABC). */
+    public static InputStream open(Rendered render, TranscodeOutput output, long byteOffset) throws IOException {
+        AudioDecoder d = render.decoder();
+        if (output.decoderBits() > 16) {
+            d = new PadTo24Decoder(d);
+        }
+        return stream(prepare(d, -1, -1, output), output, byteOffset);
+    }
+
+    private static AudioDecoder prepare(AudioDecoder d, long start, long end, TranscodeOutput output)
+            throws IOException {
+        try {
+            if (start >= 0) {
+                d = new SegmentDecoder(d, start, end);
+            }
+            return Decoders.limitRate(d, output.maxRate());
+        } catch (IOException | RuntimeException e) {
+            d.close();
+            throw e;
+        }
+    }
+
+    private static InputStream stream(AudioDecoder d, TranscodeOutput output, long byteOffset) throws IOException {
+        return switch (output.target()) {
+            case MP3 -> new Mp3Stream(d, output.bitrateKbps(), byteOffset);
+            case LPCM -> new LpcmStream(d, byteOffset);
+            case WAV -> new WavStream(d, byteOffset);
+            case FLAC, ALAC -> new EncodedFileStream(d, output.target(), byteOffset);
+        };
+    }
+
+    /** The rate and length of the PCM a source of {@code rate} / {@code samples} gives under {@code output}. */
+    public static SourceInfo outputInfo(int rate, long samples, TranscodeOutput output) {
+        return Decoders.limited(rate, samples, output.maxRate());
+    }
+
+    /**
+     * Exact length in bytes of the output form of a source, or -1 when it is only known after encoding (FLAC, ALAC).
+     */
+    public static long length(TranscodeOutput output, int rate, long samples) {
+        SourceInfo o = outputInfo(rate, samples, output);
+        return switch (output.target()) {
+            case MP3 -> Mp3Stream.length(samples, rate, output.bitrateKbps());
+            case LPCM -> LpcmStream.length(o.totalSamples(), output.bits());
+            case WAV -> WavStream.length(o.totalSamples(), output.bits());
+            case FLAC, ALAC -> -1;
+        };
+    }
+
     /** MP3 of an in-memory render (MIDI). */
     public static InputStream openMp3(Rendered render, int bitrateKbps, long byteOffset) throws IOException {
         return new Mp3Stream(render.decoder(), bitrateKbps, byteOffset);

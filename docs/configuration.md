@@ -77,6 +77,13 @@ are rooted, so for a local run set them explicitly (or pass `-Dkendar.dataDir`).
 | `transcode.soundFontPath` | string or null | null (bundled) | blank = null; if not a file: warning and bundled one is used | SF2 file for MIDI |
 | `transcode.midiSilenceThreshold` | int | 16 | 0-2000 | 16-bit amplitude regarded as silence when trimming the MIDI tail |
 | `transcode.midiMaxTailSeconds` | int | 10 | 0-120 | Longest tail rendered after the last MIDI event |
+| `transcode.ffmpegPath` | string or null | null (`ffmpeg` on the PATH) | a relative path with a separator is resolved against the config directory; `KENDAR_FFMPEG_PATH` overrides | The ffmpeg binary: WMA, APE, DSD, WavPack, Musepack, `.m4b`, HE-AAC and the FLAC / ALAC output need it |
+| `transcode.output.maxSampleRate` | int | 0 (off) | 0 or 8000-768000 | Sources faster than this are resampled down to it in the PCM based forms (LPCM, WAV, FLAC, ALAC) |
+| `transcode.output.bitDepth` | int | 16 | 16 or 24 | Sample size of the PCM based forms |
+| `transcode.output.dsdPcmRate` | int | 44100 | 44100, 88200 or 176400 | Rate DSD is decimated to (the 48 kHz family scales along); changing it rescans |
+| `transcode.output.dsdMode` | string | `pcm` | `pcm` or `dop` | `dop` sends DSD as DoP (24-bit LPCM, WAV or FLAC); changing it rescans |
+| `transcode.passthrough` | list of strings | `["wav"]` | `wav`, `mp3` | Formats whose cue / chapter / ABC sections are cut from the original instead of re-encoded |
+| `transcode.rules` | list of objects | `[]` | see [transcoding.md](transcoding.md#rules) | Ordered rules: per format, device (profile id), source sample rate and bitrate choose native, MP3, LPCM, WAV, FLAC or ALAC |
 | `clients.*` | object | see below | see below | Renderer profiles |
 | `admin.username` / `passwordHash` / `mustChange` | string / string / bool | - | - | Legacy (phase 1): migrated into the user store at the first start, then ignored |
 
@@ -108,7 +115,7 @@ Minimal working file:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `builtins` | true | Enable the built-in profiles (`vlc`, `bubbleupnp`, `kodi`, `foobar2000`, `wmp`, `samsung-tv`, `lg-tv`; provisional) |
+| `builtins` | true | Enable the built-in profiles (about 150 `ums-*` profiles from Universal Media Server's renderer list, then `vlc`, `bubbleupnp`, `kodi`, `foobar2000`, `wmp`, `samsung-tv`, `lg-tv`; unverified) |
 | `profilesFile` | null | JSON file `{ "profiles": [ ... ] }`, relative to the config directory |
 | `profiles` | `[]` | Inline profiles |
 | `defaultProfile` | MP3 native, transcoded first, MP3 target | Used when no profile matches; its `match` and `id` are ignored (id is forced to `default`) |
@@ -128,7 +135,8 @@ Profile fields:
 | `match.ipCidrs[]` | `"192.168.1.40"` or `"10.0.0.0/8"`, IPv4/IPv6 literals | none | Any-of. Never triggers DNS. IPv4-mapped IPv6 caller addresses are unwrapped |
 | `nativeFormats` | any of `MP3 OGG FLAC WAV AIFF OPUS AAC ALAC ADTS` (upper case, case-sensitive) | none | Formats the renderer plays as they are. `MIDI` is silently removed (always rendered) |
 | `resOrder` | `TRANSCODED_FIRST`, `NATIVE_FIRST` | `TRANSCODED_FIRST` | Order when original and transcode are both offered |
-| `transcodeTarget` | `MP3`, `LPCM` | `MP3` | Form of the transcoded `res` |
+| `maxSampleRate` | 0 | PCM based targets (LPCM, WAV, FLAC, ALAC) are resampled to at most this rate (8000-768000; combined with `transcode.output.maxSampleRate` the lower wins) |
+| `transcodeTarget` | `MP3`, `LPCM`, `WAV`, `FLAC`, `ALAC` | `MP3` | Form of the transcoded `res` (FLAC / ALAC need ffmpeg, else MP3) |
 | `bitrateKbps` | 0 or an MP3 bitrate | 0 | 0 = `transcode.bitrateKbps` (MP3 only) |
 | `quirks` | `AVOID_NATIVE_MP3`, `HIDE_UNPLAYABLE_ORIGINAL`, `SINGLE_RES` | none | See [dlna.md](dlna.md#client-profiles) |
 

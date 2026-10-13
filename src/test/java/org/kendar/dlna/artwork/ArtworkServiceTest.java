@@ -144,6 +144,28 @@ class ArtworkServiceTest {
         assertThat(svc.folderArt(folders.get(4).id(), false)).isEmpty();
     }
 
+
+    @Test
+    void otherCommonFolderArtNamesAndImageTypesAreUsedInPriorityOrder() throws Exception {
+        Files.createDirectories(music.resolve("a"));
+        byte[] png = image("png", 30, 30, Color.BLUE);
+        byte[] jpg = image("jpg", 30, 30, Color.RED);
+        Files.write(music.resolve("a/Folder.PNG"), png);
+        Folder f = folder("r/a", true, false);
+        ArtworkService svc = service(List.of(folder("r", false, false), f), List.of(), null);
+        Art art = svc.folderArt(f.id(), false).orElseThrow();
+        assertThat(art.data()).isEqualTo(png);
+        assertThat(art.contentType()).isEqualTo("image/png");
+        assertThat(svc.folderArt(f.id(), true).orElseThrow().contentType()).isEqualTo("image/jpeg");
+        Files.write(music.resolve("a/cover.jpg"), jpg);          // cover beats folder
+        assertThat(svc.folderArt(f.id(), false).orElseThrow().data()).isEqualTo(jpg);
+        Files.write(music.resolve("a/front.png"), png);          // front beats cover, whatever the extension
+        assertThat(svc.folderArt(f.id(), false).orElseThrow().data()).isEqualTo(png);
+        Files.write(music.resolve("a/Back.jpeg"), jpg);
+        Folder withRear = folder("r/a", true, true);
+        ArtworkService svc2 = service(List.of(folder("r", false, false), withRear), List.of(), null);
+        assertThat(svc2.rear(withRear.id()).orElseThrow().data()).isEqualTo(jpg);
+    }
     @Test
     void rearJpgIsOnlyAvailableThroughRearAccessor() throws Exception {
         Files.createDirectories(music.resolve("a"));

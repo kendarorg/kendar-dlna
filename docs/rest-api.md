@@ -302,7 +302,12 @@ Entry: `{ "index": 0, "path": "main/A/01.flac", "status": "ok|missing|no_access"
 | `POST /me/playlists/{id}/share` / `unshare` | optional `{version}` | `200` detail |
 | `POST /me/playlists/{id}/copy` | optional `{name}` | `201` detail of the private copy |
 | `POST /me/playlists/copy` | `{source:"shared", owner, id, name?}` or `{source:"system", key, name?}` | `201` detail |
+| `GET /me/playlists/{id}/export[?format=m3u8|m3u|pls&root=false]` | - | the playlist as a file (`Content-Disposition: attachment`); entries are catalog paths (`Root/dir/file.flac`, or `dir/file.flac` with `root=false`) with `#EXTINF` / `Title` lines; tracks outside the caller's roots or gone from the catalog are left out. `400` for another format |
+| `POST /me/playlists/import[?name=&filename=]` | the M3U / M3U8 / PLS file as the raw request body (UTF-8, or Latin-1 for old M3U) | `201 {playlist (detail), imported, total, unmatched:[{entry, location, title, reason}]}`; the name is `name`, else `filename` without extension, else `Imported playlist` |
+| `POST /me/playlists/{id}/import` | the file as the body | `200` same shape, the matches are appended |
 | `POST /me/playlists/{id}/fix-path` | `{index, path, version?}` | `200` detail; replaces the entry (new path must exist, allowed) |
+
+Import matches each entry to a track of the caller's allowed roots: an exact catalog path first, else the longest tail of the entry's path (folders written by another program or machine, Windows paths, `file://` URLs, any case) that identifies exactly one file. `reason` of an unmatched entry is `not_found`, `ambiguous` (several files fit) or `not_a_file` (a stream URL). `400` when the file is empty or nothing matched; nothing is created then.
 
 Limits: 500 playlists (`409 too_many`), 20 000 tracks, name 1-200 chars, description <= 1000. A foreign or unknown id is
 `404`.
@@ -601,7 +606,7 @@ Conflict `field` names: `album`, `albumArtist`, `genre`, `year`, `discNumber`, `
 
 ### `GET /api/v1/admin/folders/art?path=&kind=front|rear`
 
-Returns the picture file `front.jpg`/`rear.jpg` as `image/jpeg` (`Cache-Control: private, no-cache`). `404 not_found` if
+Returns the picture file (`front.jpg`/`rear.jpg`, or the best of the other accepted names such as `cover.png`) with its own image type (`Cache-Control: private, no-cache`). `404 not_found` if
 absent. `kind` other than `front|rear` -> `400 bad_request`. (An extra `v=` query value, used by the UI to bust caches,
 is ignored.)
 

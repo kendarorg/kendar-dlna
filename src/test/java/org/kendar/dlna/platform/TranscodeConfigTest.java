@@ -64,6 +64,62 @@ class TranscodeConfigTest {
         assertThat(Files.readString(other.resolve("config.json"))).contains("\"transcode\"").contains("bitrateKbps");
     }
 
+
+    @Test
+    void outputRulesAndPassthroughAreReadAndValidated() throws Exception {
+        AppConfig.Transcode t = load("""
+                {"transcode":{"ffmpegPath":"ff","output":{"maxSampleRate":96000,"bitDepth":24,"dsdPcmRate":176400,
+                 "dsdMode":"DoP"},"passthrough":["WAV","mp3"],
+                 "rules":[{"formats":["flac","dsd"],"profiles":["tv"],"minSampleRate":96000,"action":"WAV",
+                 "outputMaxSampleRate":48000,"outputBitDepth":16,"hideOriginal":true}]}}""").transcode();
+        assertThat(t.output().maxSampleRate()).isEqualTo(96000);
+        assertThat(t.output().bitDepth()).isEqualTo(24);
+        assertThat(t.output().dsdPcmRate()).isEqualTo(176400);
+        assertThat(t.output().dop()).isTrue();
+        assertThat(t.passthrough()).containsExactly("wav", "mp3");
+        assertThat(t.rules()).singleElement().satisfies(r -> {
+            assertThat(r.formats()).containsExactly("FLAC", "DSD");
+            assertThat(r.action()).isEqualTo("wav");
+            assertThat(r.outputMaxSampleRate()).isEqualTo(48000);
+            assertThat(r.hideOriginal()).isTrue();
+        });
+        assertThat(Main.transcodeRules(t).match(
+                new org.kendar.dlna.catalog.Track(org.kendar.dlna.shared.RootRef.parse("m/a.flac"), 1, 1, Format.FLAC,
+                        null, 1, 1, 96000, 2, false),
+                new org.kendar.dlna.clients.ClientProfile("tv", "", org.kendar.dlna.clients.ProfileMatch.userAgent("x"),
+                        java.util.Set.of(), null, null, 0, java.util.Set.of()))).isPresent();
+        AppConfig defaults = load("{}");
+        assertThat(defaults.transcode().output().maxSampleRate()).isZero();
+        assertThat(defaults.transcode().output().bitDepth()).isEqualTo(16);
+        assertThat(defaults.transcode().output().dsdPcmRate()).isEqualTo(44100);
+        assertThat(defaults.transcode().output().dop()).isFalse();
+        assertThat(defaults.transcode().passthrough()).containsExactly("wav");
+        assertThat(defaults.transcode().rules()).isEmpty();
+        // relative ffmpeg path and rules survive path resolution
+        assertThat(load("{\"transcode\":{\"rules\":[{\"action\":\"native\"}]}}").transcode().rules()).hasSize(1);
+    }
+
+    @Test
+    void invalidOutputRulesAndPassthroughFailFast() {
+        assertThatThrownBy(() -> load("{\"transcode\":{\"output\":{\"bitDepth\":20}}}"))
+                .hasMessageContaining("transcode.output.bitDepth");
+        assertThatThrownBy(() -> load("{\"transcode\":{\"output\":{\"dsdPcmRate\":48000}}}"))
+                .hasMessageContaining("dsdPcmRate");
+        assertThatThrownBy(() -> load("{\"transcode\":{\"output\":{\"dsdMode\":\"x\"}}}"))
+                .hasMessageContaining("dsdMode");
+        assertThatThrownBy(() -> load("{\"transcode\":{\"output\":{\"maxSampleRate\":100}}}"))
+                .hasMessageContaining("maxSampleRate");
+        assertThatThrownBy(() -> load("{\"transcode\":{\"passthrough\":[\"flac\"]}}"))
+                .hasMessageContaining("passthrough");
+        assertThatThrownBy(() -> load("{\"transcode\":{\"rules\":[{\"action\":\"ogg\"}]}}"))
+                .hasMessageContaining("rules[1].action");
+        assertThatThrownBy(() -> load("{\"transcode\":{\"rules\":[{\"action\":\"mp3\",\"formats\":[\"xyz\"]}]}}"))
+                .hasMessageContaining("unknown format");
+        assertThatThrownBy(() -> load("{\"transcode\":{\"rules\":[{\"action\":\"mp3\",\"bitrateKbps\":300}]}}"))
+                .hasMessageContaining("bitrateKbps");
+        assertThatThrownBy(() -> load("{\"transcode\":{\"rules\":[{\"action\":\"wav\",\"outputBitDepth\":8}]}}"))
+                .hasMessageContaining("outputBitDepth");
+    }
     @Test
     void invalidValuesFailFastWithAClearMessage() {
         assertThatThrownBy(() -> load("{\"transcode\":{\"bitrateKbps\":300}}"))
@@ -142,7 +198,7 @@ class TranscodeConfigTest {
             assertThat(reader.unsupportedReason(Format.MIDI)).contains("MIDI rendering unavailable")
                     .contains("SoundFont");
         }
-        assertThat(none.fingerprintSuffix()).startsWith("|v10");
+        assertThat(none.fingerprintSuffix()).startsWith("|v12");
 
         // a configured file that exists enables MIDI (any file: the loader reads it lazily at the first render)
         Path sf = Files.write(dir.resolve("x.sf2"), new byte[10]);

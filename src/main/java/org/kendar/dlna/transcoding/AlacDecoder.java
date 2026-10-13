@@ -16,12 +16,18 @@ final class AlacDecoder extends FixedLengthDecoder {
     private final RandomAccessFile raf;
     private final AlacFrames frames;
     private final int[][] samples;
+    private final boolean wide;
     private int nextUnit;
     private long discard;
     private byte[] pending = new byte[0];
     private int pendingPos;
 
     static AlacDecoder open(Path file) throws IOException {
+        return open(file, false);
+    }
+
+    /** @param wide deliver stereo s24le (6-byte frames) instead of s16le */
+    static AlacDecoder open(Path file, boolean wide) throws IOException {
         Mp4Audio m = Mp4Audio.open(file);
         if (m.codec != Mp4Audio.Codec.ALAC) {
             throw new IOException("not an ALAC file: " + file.getFileName());
@@ -30,13 +36,14 @@ final class AlacDecoder extends FixedLengthDecoder {
             throw new IOException("ALAC stream without audio: " + file.getFileName());
         }
         AlacFrames f = new AlacFrames(m.config);
-        AlacDecoder d = new AlacDecoder(m, f);
+        AlacDecoder d = new AlacDecoder(m, f, wide);
         d.startAt(0);
         return d;
     }
 
-    private AlacDecoder(Mp4Audio src, AlacFrames frames) throws IOException {
-        super(src.length);
+    private AlacDecoder(Mp4Audio src, AlacFrames frames, boolean wide) throws IOException {
+        super(src.length, wide ? 6 : 4);
+        this.wide = wide;
         this.src = src;
         this.frames = frames;
         this.raf = new RandomAccessFile(src.file.toFile(), "r");
@@ -74,10 +81,16 @@ final class AlacDecoder extends FixedLengthDecoder {
             int skipFrames = (int) Math.min(discard, n);
             discard -= skipFrames;
             int bits = frames.bitDepth();
-            byte[] out = new byte[(n - skipFrames) * 4];
+            int fb = frameBytes();
+            byte[] out = new byte[(n - skipFrames) * fb];
             for (int i = skipFrames; i < n; i++) {
-                StereoPcm.put(out, (i - skipFrames) * 4, StereoPcm.to16(samples[0][i], bits),
-                        StereoPcm.to16(samples[frames.channels() > 1 ? 1 : 0][i], bits));
+                int l = samples[0][i];
+                int r = samples[frames.channels() > 1 ? 1 : 0][i];
+                if (wide) {
+                    StereoPcm.put24(out, (i - skipFrames) * fb, StereoPcm.to24(l, bits), StereoPcm.to24(r, bits));
+                } else {
+                    StereoPcm.put(out, (i - skipFrames) * fb, StereoPcm.to16(l, bits), StereoPcm.to16(r, bits));
+                }
             }
             pending = out;
             pendingPos = 0;

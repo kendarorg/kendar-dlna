@@ -171,6 +171,13 @@ export const Api = {
   },
   /** body: {name?, description?, tracks?, version?}. A stale version answers 409 conflict. */
   updateMyPlaylist(id, body) { return this.put('/me/playlists/' + encodeURIComponent(id), body); },
+  /** Imports an M3U / M3U8 / PLS file (a File or Blob) as a new playlist, or appends it to playlist `targetId`. */
+  importMyPlaylist(file, targetId) {
+    const path = targetId ? '/me/playlists/' + encodeURIComponent(targetId) + '/import?mode=append'
+      : '/me/playlists/import?' + qs({ filename: file.name || '' });
+    return this.request('POST', path, file, { raw: true });
+  },
+  exportMyPlaylistUrl(id, format) { return '/api/v1/me/playlists/' + encodeURIComponent(id) + '/export?format=' + format; },
   deleteMyPlaylist(id) { return this.del('/me/playlists/' + encodeURIComponent(id)); },
   addToMyPlaylist(id, paths, position) {
     const body = { paths: paths };

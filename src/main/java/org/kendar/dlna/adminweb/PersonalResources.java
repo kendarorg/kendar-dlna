@@ -7,6 +7,7 @@ import java.util.Map;
 import org.kendar.dlna.identity.User;
 import org.kendar.dlna.personal.PersonalException;
 import org.kendar.dlna.personal.PersonalService;
+import org.kendar.dlna.personal.PlaylistFiles;
 import org.kendar.dlna.personal.Precondition;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -133,7 +134,22 @@ final class PersonalResources {
                 default -> throw ApiException.badRequest("source must be shared or system");
             });
         }
+        if (n == 1 && seg.get(0).equals("import") && m.equals("POST")) {
+            return ApiResponse.json(201, personal.importPlaylist(user, null, importName(req), req.body()));
+        }
         String id = seg.get(0);
+        if (n == 2 && id != null && seg.get(1).equals("import") && m.equals("POST")) {
+            return ApiResponse.ok(personal.importPlaylist(user, id, null, req.body()));
+        }
+        if (n == 2 && seg.get(1).equals("export") && m.equals("GET")) {
+            PlaylistFiles.Output f = personal.exportPlaylist(user, id, req.query().get("format"),
+                    "false".equalsIgnoreCase(req.query().getOrDefault("root", "true")));
+            String ascii = f.fileName().replaceAll("[^\\x20-\\x7E]", "_").replace("\"", "_");
+            String utf8 = java.net.URLEncoder.encode(f.fileName(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("+", "%20");
+            return ApiResponse.bytes(f.contentType(), f.body()).withHeader("Content-Disposition",
+                    "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + utf8);
+        }
         if (n == 1) {
             return switch (m) {
                 case "GET" -> etagged(req, personal.playlist(user, id, req.query()));
@@ -279,6 +295,18 @@ final class PersonalResources {
 
     private static JsonNode optJson(ApiRequest req) {
         return req.body().length == 0 ? null : req.json();
+    }
+
+    /** Name of an imported playlist: the {@code name} parameter, else the uploaded file name without extension. */
+    private static String importName(ApiRequest req) {
+        String n = req.query().get("name");
+        if (n == null || n.isBlank()) {
+            n = req.query().get("filename");
+            if (n != null) {
+                n = n.replaceAll("^.*[\\\\/]", "").replaceAll("\\.[A-Za-z0-9]{1,5}$", "");
+            }
+        }
+        return n;
     }
 
     private static String name(ApiRequest req) {

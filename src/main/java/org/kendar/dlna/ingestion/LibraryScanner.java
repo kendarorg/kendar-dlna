@@ -443,7 +443,7 @@ public class LibraryScanner {
         }
         String ext = fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
         return switch (ext) {
-            case "wv", "mpc", "m4b", "alac" ->
+            case "alac" ->
                     Optional.of("no decoder for ." + ext);
             default -> Optional.empty();
         };
@@ -456,9 +456,9 @@ public class LibraryScanner {
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
             for (Path p : ds) {
                 String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
-                if (n.equals("front.jpg")) {
+                if (org.kendar.dlna.shared.ArtNames.isFront(n)) {
                     front = true;
-                } else if (n.equals("rear.jpg")) {
+                } else if (org.kendar.dlna.shared.ArtNames.isRear(n)) {
                     rear = true;
                 } else if (n.equals(SETTINGS_FILE) && Files.isRegularFile(p)) {
                     settingsFile = p;

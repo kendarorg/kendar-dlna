@@ -11,10 +11,22 @@ import java.util.Arrays;
 abstract class FixedLengthDecoder implements AudioDecoder {
 
     private final long total;
+    private final int frameBytes;
     private long position;
 
     FixedLengthDecoder(long totalSamples) {
+        this(totalSamples, 4);
+    }
+
+    /** @param frameBytes 4 (stereo s16le) or 6 (stereo s24le) */
+    FixedLengthDecoder(long totalSamples, int frameBytes) {
         this.total = totalSamples;
+        this.frameBytes = frameBytes;
+    }
+
+    @Override
+    public final int frameBytes() {
+        return frameBytes;
     }
 
     /** Positions the underlying codec at {@code frame} (sample accurate). */
@@ -40,7 +52,7 @@ abstract class FixedLengthDecoder implements AudioDecoder {
         if (left <= 0) {
             return -1;
         }
-        int want = (int) Math.min(len & ~3, left * 4);
+        int want = (int) Math.min(len / frameBytes * frameBytes, left * frameBytes);
         if (want <= 0) {
             return 0;
         }
@@ -48,12 +60,12 @@ abstract class FixedLengthDecoder implements AudioDecoder {
         if (n < 0) {
             n = 0;
         }
-        n &= ~3;
+        n -= n % frameBytes;
         if (n == 0) {
             Arrays.fill(buf, off, off + want, (byte) 0);   // codec ended early: pad with silence
             n = want;
         }
-        position += n / 4;
+        position += n / frameBytes;
         return n;
     }
 }

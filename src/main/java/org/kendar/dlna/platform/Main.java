@@ -109,9 +109,9 @@ public final class Main {
                 + (tc.prefetch() ? "on" : "off") : "off") + ", MIDI "
                 + (transcoding.midiAvailable ? "available" : "unavailable (" + transcoding.midiReason() + ")"));
         if (transcoding.ffmpegVersion != null) {
-            LOG.info("ffmpeg (WMA, APE): " + transcoding.ffmpegVersion + " [" + transcoding.ffmpegBinary + "]");
+            LOG.info("ffmpeg (WMA, APE, DSD, WavPack, MPC, m4b, HE-AAC, FLAC / ALAC output): " + transcoding.ffmpegVersion + " [" + transcoding.ffmpegBinary + "]");
         } else {
-            LOG.warning("ffmpeg NOT FOUND (" + transcoding.ffmpegBinary + "): WMA and APE files will be listed as unsupported. "
+            LOG.warning("ffmpeg NOT FOUND (" + transcoding.ffmpegBinary + "): WMA, APE, DSD, WavPack, MPC and m4b files will be listed as unsupported. "
                     + "Install ffmpeg or set transcode.ffmpegPath in config.json / KENDAR_FFMPEG_PATH");
         }
         LibraryScanner scanner = new LibraryScanner(transcoding.tagReader(), Clock.systemUTC(), tc.enabled());
@@ -136,8 +136,9 @@ public final class Main {
         TranscodeCache cache = new TranscodeCache(dataDir.resolve("transcode"), tc.cacheMaxMb() * 1024L * 1024L,
                 Duration.ofHours(tc.cacheTtlHours()), Clock.systemUTC());
         TranscodeService transcode = new TranscodeService(transcoding.transcoder, cache, tc.enabled(),
-                tc.bitrateKbps(), transcoding.midiStamp,
-                (track, samples, millis) -> catalog.recordRenderedLength(track, samples, millis));
+                tc.bitrateKbps(), tc.output().bitDepth(), tc.output().maxSampleRate(), transcoding.midiStamp,
+                (track, samples, millis) -> catalog.recordRenderedLength(track, samples, millis))
+                .passthrough(tc.passthrough());
         catalog.addListener(new TranscodeCacheInvalidator(cache, holder::current));
         ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "transcode-cache-sweeper");
@@ -199,7 +200,7 @@ public final class Main {
 
         BrowseEngine browse = new BrowseEngine(holder, new DefaultStreamUrlBuilder(),
                 () -> LocalAddress.baseUrl(config.network().advertiseAddress(), port), artwork, shuffle, views,
-                new ResourceOffers(transcode), clients);
+                new ResourceOffers(transcode, transcodeRules(tc)), clients);
         UUID uuid = DeviceUuidStore.loadOrCreate(dataDir);
         DlnaServer dlna = new DlnaServer(uuid, config.server().friendlyName(), jetty.contexts(), port, browse);
         dlna.start();
@@ -229,5 +230,26 @@ public final class Main {
             }
         }, "shutdown"));
         stopped.await();
+    }
+
+    /** The configured transcoding rules in the form the delivery side evaluates. */
+    static org.kendar.dlna.delivery.TranscodeRules transcodeRules(AppConfig.Transcode tc) {
+        java.util.List<org.kendar.dlna.delivery.TranscodeRules.Rule> out = new java.util.ArrayList<>();
+        for (AppConfig.Rule r : tc.rules()) {
+            java.util.Set<org.kendar.dlna.catalog.Format> formats = new java.util.LinkedHashSet<>();
+            r.formats().forEach(f -> formats.add(org.kendar.dlna.catalog.Format.valueOf(f)));
+            org.kendar.dlna.delivery.StreamVariant.Kind action = switch (r.action()) {
+                case "mp3" -> org.kendar.dlna.delivery.StreamVariant.Kind.MP3;
+                case "lpcm" -> org.kendar.dlna.delivery.StreamVariant.Kind.LPCM;
+                case "wav" -> org.kendar.dlna.delivery.StreamVariant.Kind.WAV;
+                case "flac" -> org.kendar.dlna.delivery.StreamVariant.Kind.FLAC;
+                case "alac" -> org.kendar.dlna.delivery.StreamVariant.Kind.ALAC;
+                default -> null;   // "native"
+            };
+            out.add(new org.kendar.dlna.delivery.TranscodeRules.Rule(formats, java.util.Set.copyOf(r.profiles()),
+                    r.minSampleRate(), r.maxSampleRate(), r.minBitrateKbps(), r.maxBitrateKbps(), action,
+                    r.bitrateKbps(), r.outputMaxSampleRate(), r.outputBitDepth(), r.hideOriginal()));
+        }
+        return new org.kendar.dlna.delivery.TranscodeRules(out);
     }
 }

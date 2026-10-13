@@ -21,6 +21,7 @@ import org.jupnp.support.model.ProtocolInfos;
 import org.kendar.dlna.catalog.CatalogChangeListener;
 import org.kendar.dlna.catalog.Format;
 import org.kendar.dlna.delivery.MediaTypes;
+import org.kendar.dlna.delivery.StreamVariant;
 
 /** Starts jUPnP (SSDP + descriptions) and registers the MediaServer:1 device. Stop sends ssdp:byebye. */
 public final class DlnaServer {
@@ -107,6 +108,13 @@ public final class DlnaServer {
         infos.add(new ProtocolInfo(MediaTypes.transcodedMp3ProtocolInfo()));
         for (int rate : new int[] { 32000, 44100, 48000 }) {
             infos.add(new ProtocolInfo(MediaTypes.lpcmProtocolInfo(rate)));
+        }
+        for (int rate : new int[] { 44100, 48000, 88200, 96000, 176400, 192000 }) {
+            infos.add(new ProtocolInfo(MediaTypes.protocolInfo(StreamVariant.pcm(StreamVariant.Kind.LPCM, 24, 0), rate)));
+        }
+        for (StreamVariant.Kind k : new StreamVariant.Kind[] { StreamVariant.Kind.WAV, StreamVariant.Kind.FLAC,
+                StreamVariant.Kind.ALAC }) {
+            infos.add(new ProtocolInfo(MediaTypes.protocolInfo(StreamVariant.pcm(k, 16, 0), 0)));
         }
         return infos;
     }

@@ -32,7 +32,11 @@
     "cacheTtlHours": 336,
     "soundFontPath": null,
     "midiSilenceThreshold": 16,
-    "midiMaxTailSeconds": 10
+    "midiMaxTailSeconds": 10,
+    "ffmpegPath": null,
+    "output": { "maxSampleRate": 0, "bitDepth": 16, "dsdPcmRate": 44100, "dsdMode": "pcm" },
+    "passthrough": ["wav"],
+    "rules": []
   },
   "clients": {
     "builtins": true,

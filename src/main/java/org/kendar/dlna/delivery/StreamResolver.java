@@ -108,10 +108,15 @@ public final class StreamResolver {
             return status(404);
         }
         Track track = found.get();
+        boolean slice = false;
         if (track.isSegment() && !variant.transcoded()) {
-            variant = StreamVariant.mp3(0);   // a cue / chapter track only exists decoded: never a byte range of the file
+            // a cue / chapter track is a cut of the file only where that is exact (WAV) or allowed (MP3), else decoded
+            slice = transcoding != null && transcoding.canSlice(track);
+            if (!slice) {
+                variant = StreamVariant.mp3(0);
+            }
         }
-        if (variant.transcoded() ? transcoding == null || !transcoding.canTranscode(track.format())
+        if (variant.transcoded() ? transcoding == null || !transcoding.canProduce(track.format(), variant)
                 : track.format().rendered()) {
             return status(404);   // not offered: no transcoder, or MIDI which only exists rendered
         }
@@ -122,14 +127,15 @@ public final class StreamResolver {
                 onMissing.accept(track.ref());
                 return status(404);
             }
-            body = variant.transcoded() ? transcoding.body(track, file, variant)
+            body = slice ? transcoding.sliceBody(track, file)
+                    : variant.transcoded() ? transcoding.body(track, file, variant)
                     : new StreamBody.FileBody(file, Files.size(file), MediaTypes.mimeType(track.format()),
                             MediaTypes.contentFeatures(track.format()));
         } catch (java.nio.file.NoSuchFileException e) {
             onMissing.accept(track.ref());
             return status(404);
         } catch (IOException e) {
-            if (variant.transcoded()) {
+            if (variant.transcoded() || slice) {
                 LOG.warning("Cannot transcode " + track.ref() + " (" + variant.path() + "): " + e);
                 return status(500);
             }

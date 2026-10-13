@@ -1,6 +1,8 @@
 package org.kendar.dlna.delivery;
 
 import org.kendar.dlna.catalog.Format;
+import org.kendar.dlna.transcoding.LpcmStream;
+import org.kendar.dlna.transcoding.WavStream;
 
 /** Native MIME type, DLNA profile and protocolInfo per format (plan section 11). */
 public final class MediaTypes {
@@ -25,6 +27,9 @@ public final class MediaTypes {
             case WMA -> "audio/x-ms-wma";
             case APE -> "audio/x-ape";
             case DSD -> "audio/x-dsf";
+            case WAVPACK -> "audio/x-wavpack";
+            case MPC -> "audio/x-musepack";
+            case M4B -> "audio/mp4";
         };
     }
 
@@ -47,6 +52,35 @@ public final class MediaTypes {
     /** Features of the LPCM {@code res}. */
     public static String lpcmFeatures() {
         return "DLNA.ORG_PN=LPCM;DLNA.ORG_OP=01;DLNA.ORG_CI=1;DLNA.ORG_FLAGS=" + DLNA_FLAGS;
+    }
+
+    /** MIME type of a transcoded form; {@code rate} is the PCM sample rate (LPCM only). */
+    public static String mimeType(StreamVariant v, int rate) {
+        return switch (v.kind()) {
+            case MP3 -> "audio/mpeg";
+            case LPCM -> LpcmStream.mimeType(rate, v.bits());
+            case WAV -> WavStream.mimeType();
+            case FLAC -> "audio/flac";
+            case ALAC -> "audio/mp4";
+            case NATIVE -> throw new IllegalArgumentException("native has no transcoded form");
+        };
+    }
+
+    /** DLNA features of a transcoded form: a profile name only where DLNA defines one (MP3, L16). */
+    public static String features(StreamVariant v) {
+        return switch (v.kind()) {
+            case MP3 -> transcodedMp3Features();
+            case LPCM -> v.bits() == 16 ? lpcmFeatures() : convertedFeatures();
+            default -> convertedFeatures();
+        };
+    }
+
+    private static String convertedFeatures() {
+        return "DLNA.ORG_OP=01;DLNA.ORG_CI=1;DLNA.ORG_FLAGS=" + DLNA_FLAGS;
+    }
+
+    public static String protocolInfo(StreamVariant v, int rate) {
+        return protocolInfo(mimeType(v, rate), features(v));
     }
 
     public static String protocolInfo(String mimeType, String features) {

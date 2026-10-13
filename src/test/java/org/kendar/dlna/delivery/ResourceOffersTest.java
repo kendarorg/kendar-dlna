@@ -168,7 +168,12 @@ class ResourceOffersTest {
         assertThat(StreamVariant.parse("mp3-128")).contains(StreamVariant.mp3(128));
         assertThat(StreamVariant.parse("mp3-129")).isEmpty();
         assertThat(StreamVariant.parse("mp3-x")).isEmpty();
-        assertThat(StreamVariant.parse("flac")).isEmpty();
+        assertThat(StreamVariant.parse("flac")).contains(StreamVariant.pcm(StreamVariant.Kind.FLAC, 16, 0));
+        assertThat(StreamVariant.parse("wav-24-r96000")).contains(StreamVariant.pcm(StreamVariant.Kind.WAV, 24, 96000));
+        assertThat(StreamVariant.parse("wav-r96000").get().path()).isEqualTo("wav-r96000");
+        assertThat(StreamVariant.parse("lpcm-16")).isEmpty();
+        assertThat(StreamVariant.parse("lpcm-r100")).isEmpty();
+        assertThat(StreamVariant.parse("opus")).isEmpty();
         assertThat(StreamVariant.mp3(0).resolved(256)).isEqualTo(StreamVariant.mp3(256));
         assertThat(StreamVariant.mp3(128).resolved(256)).isEqualTo(StreamVariant.mp3(128));
         assertThat(StreamVariant.LPCM.resolved(256)).isEqualTo(StreamVariant.LPCM);

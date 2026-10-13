@@ -29,9 +29,10 @@ search, MP3 transcoding of formats the renderer cannot play, MIDI rendering, and
 database, no native libraries. The design is in `plan.md`.
 
 * Formats: MP3, OGG Vorbis, FLAC, WAV, AIFF, Opus, AAC-LC (`.m4a` `.mp4` and raw ADTS `.aac`), Apple Lossless (ALAC,
-  `.m4a`), MIDI (`.mid` `.midi` `.kar`), ABC notation (`.abc`, converted to MIDI and rendered like MIDI; a file with several `X:` tunes becomes one virtual track per tune, tags are read-only). WMA (`.wma`) and APE (`.ape`) need ffmpeg (see [ffmpeg](#ffmpeg-wma-ape-and-dsd)), as does DSD (`.dsf` `.dff`, decimated to 44.1 kHz PCM). Others (HE-AAC, WavPack, `.m4b`, ...) are listed in
+  `.m4a`), MIDI (`.mid` `.midi` `.kar`), ABC notation (`.abc`, converted to MIDI and rendered like MIDI; a file with several `X:` tunes becomes one virtual track per tune, tags are read-only). WMA (`.wma`), APE (`.ape`), WavPack (`.wv`), Musepack (`.mpc`), audiobooks (`.m4b`), HE-AAC and DSD (`.dsf` `.dff`, decimated to PCM or sent as DoP) need ffmpeg (see [ffmpeg](#ffmpeg-wma-ape-and-dsd)). Others are listed in
   the admin page as *unsupported*, with the reason, and are not exposed through DLNA.
 * Out of scope: authentication on the DLNA side, gapless playback, client queues, filesystem watching.
+* Output forms: MP3, LPCM (L16/L24), WAV, and FLAC / ALAC (ffmpeg); 16 or 24 bit, optional sample rate cap, DSD to PCM rate or DoP, and ordered per-format / per-device rules (`transcode.output`, `transcode.rules`, see [transcoding.md](docs/transcoding.md)). Cue / chapter sections of WAV files are served as an exact cut of the original (`transcode.passthrough`).
 
 ## Documentation
 
@@ -145,7 +146,7 @@ Environment variables:
 | `KENDAR_PORT` | 8200 | overrides `network.port` (also used by the health check) |
 | `KENDAR_FRIENDLY_NAME` | (config) | overrides `server.friendlyName` |
 | `KENDAR_ADMIN_PASSWORD` | (unset) | fixed admin password (plain or `pbkdf2-sha256$` hash), applied at every start; `KENDAR_ADMIN_USER` names the account |
-| `KENDAR_FFMPEG_PATH` | `ffmpeg` (PATH) | overrides `transcode.ffmpegPath`: the ffmpeg binary for WMA and APE |
+| `KENDAR_FFMPEG_PATH` | `ffmpeg` (PATH) | overrides `transcode.ffmpegPath`: the ffmpeg binary (WMA, APE, DSD, WavPack, Musepack, m4b, HE-AAC, FLAC / ALAC output) |
 | `KENDAR_DEFAULT_ROOT` | `/music` (image) | only for the first-run template: library root `Music` |
 
 `LANG=C.UTF-8` is set so non-ASCII file names work. Health: `GET /health` returns `{"status":"UP"}` (the image and
@@ -264,13 +265,14 @@ Hardening checklist for an internet-facing player:
   cache (`/data/transcode`, LRU, `cacheMaxMb` 2048, `cacheTtlHours` 336) so it starts instantly.
 * **Client profiles** (`clients` in `config.json`, optional `clients.json`) decide per renderer (User-Agent, headers,
   IP) which formats are native, the order of the `res` elements, MP3 or LPCM, and quirks. Built-in profiles exist for
-  VLC, BubbleUPnP, Kodi, foobar2000, WMP, Samsung and LG TVs (provisional until tested; see
-  `docs/client-compatibility.md`). Details: `docs/transcoding.md`.
+  about 150 renderers taken from the open source Universal Media Server's renderer files (Samsung, LG, Sony, Panasonic,
+  Philips, Denon, Yamaha, Roku, Xbox, PlayStation, VLC, Kodi, ...) plus a few older guesses (untested with real renderers;
+  see `docs/client-compatibility.md`). Details: `docs/transcoding.md`.
 * **AAC and ALAC.** `.m4a` / `.mp4` are told apart by the codec inside (AAC-LC or ALAC), raw `.aac` is ADTS. Native
   `res` is `audio/mp4` (`audio/aac` for ADTS) without a `DLNA.ORG_PN`. Gapless-exact length from the MP4 edit list or
   `iTunSMPB`; seeking is sample accurate. Tags (title, artist, album, album artist, composer, genre, year, track, disc)
-  and cover art are read and written for `.m4a` / `.mp4`; raw `.aac` has no tags and is read-only. Not supported
-  (listed as unsupported with the reason): HE-AAC (SBR/PS), AAC profiles other than LC, MP4 with a video track,
+  and cover art are read and written for `.m4a` / `.mp4`; raw `.aac` has no tags and is read-only. HE-AAC (SBR/PS) and AAC profiles
+  other than LC need ffmpeg (else they are listed as unsupported with the reason). Not supported: MP4 with a video track,
   fragmented MP4, DRM, ALAC with more than 2 channels or other than 16/24 bit. AAC with more than 2 channels is folded
   to stereo. Details and test results: `docs/aac-alac-findings.md`.
 * Playable: every file of the formats above. Unsupported files, bad `settings.json` and broken playlist entries are
@@ -278,16 +280,18 @@ Hardening checklist for an internet-facing player:
 
 ## ffmpeg (WMA, APE and DSD)
 
-WMA, APE and DSD have no Java decoder, so they are read and decoded through the external `ffmpeg` (tags from
-`ffmpeg -f ffmetadata`, audio as PCM, then converted to MP3 / LPCM like every other format). Tags of these files are
-read-only.
+WMA, APE, DSD, WavPack, Musepack and `.m4b` have no Java decoder, so they are read and decoded through the external
+`ffmpeg` (tags from `ffmpeg -f ffmetadata`, audio as PCM, then converted to MP3 / LPCM / WAV like every other format).
+HE-AAC and the AAC profiles the Java decoder refuses are decoded by it too, and the FLAC and ALAC outputs are encoded
+by it. Tags of these files are read-only. DSD is decimated to 44.1 kHz by default (`transcode.output.dsdPcmRate`) or
+sent as DoP (`transcode.output.dsdMode`).
 
 * **Docker**: the image installs `ffmpeg` from the distribution's package manager, which picks the build for the image
   architecture (amd64, arm64, ...). Build with `--build-arg INSTALL_FFMPEG=false` to leave it out.
 * **Elsewhere**: install ffmpeg and make it available on the `PATH`, or give its location with `transcode.ffmpegPath`
   in `config.json` or `KENDAR_FFMPEG_PATH` (a bare name is looked up on the `PATH`; the variable wins).
-* **Missing ffmpeg**: the startup log says so (`ffmpeg NOT FOUND ...`, a warning), and the `.wma` / `.ape` files are
-  listed as unsupported in the admin page with the reason. Everything else works. Transcoding must be on
+* **Missing ffmpeg**: the startup log says so (`ffmpeg NOT FOUND ...`, a warning), and the `.wma` / `.ape` / `.wv` / `.mpc` / `.m4b` /
+  `.dsf` / `.dff` files are listed as unsupported in the admin page with the reason. Everything else works. Transcoding must be on
   (`transcode.enabled`), as for MIDI.
 
 ## SoundFont (MIDI)
@@ -342,7 +346,7 @@ the tracks disagree).
 }
 ```
 
-Artwork: `front.jpg` (item and folder art, preferred over embedded art) and `rear.jpg` (admin UI only) in the directory.
+Artwork: a front image in the directory (item and folder art, preferred over embedded art) and a rear image (admin UI only). Front: `front`, `cover`, `folder`, `album`, `albumart`, `albumartlarge`; rear: `rear`, `back`; each as `.jpg`, `.jpeg`, `.png`, `.gif` or `.bmp`, matched case-insensitively. Names are tried in that order (`front.jpg` first, which is what the admin UI writes), JPEG before the other types. WebP and embedded pictures of other kinds are not read from files.
 Whole-library random: put `"random": N` in the root's `settings.json`.
 
 **Recently added.** Every track has a persisted first-seen time (`addedAt` in `catalog.json`). On the very first full

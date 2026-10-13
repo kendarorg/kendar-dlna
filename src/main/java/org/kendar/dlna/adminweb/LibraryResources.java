@@ -371,7 +371,11 @@ final class LibraryResources {
             throw ApiException.notFound("No such picture");
         }
         try {
-            return ApiResponse.bytes("image/jpeg", Files.readAllBytes(file.get()))
+            byte[] data = Files.readAllBytes(file.get());
+            String type = data.length > 8 && (data[0] & 0xFF) == 0x89 && data[1] == 'P' ? "image/png"
+                    : data.length > 3 && data[0] == 'G' && data[1] == 'I' && data[2] == 'F' ? "image/gif"
+                    : data.length > 2 && data[0] == 'B' && data[1] == 'M' ? "image/bmp" : "image/jpeg";
+            return ApiResponse.bytes(type, data)
                     .withHeader("Cache-Control", "private, no-cache");
         } catch (IOException e) {
             throw ApiException.notFound("The picture cannot be read");

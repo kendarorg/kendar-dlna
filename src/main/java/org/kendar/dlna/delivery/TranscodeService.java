@@ -14,7 +14,7 @@ import java.util.function.BooleanSupplier;
 
 import org.kendar.dlna.catalog.Format;
 import org.kendar.dlna.catalog.Track;
-import org.kendar.dlna.transcoding.LpcmStream;
+import org.kendar.dlna.transcoding.Ffmpeg;
 import org.kendar.dlna.transcoding.SourceFormat;
 import org.kendar.dlna.transcoding.Transcoder;
 
@@ -32,7 +32,7 @@ import org.kendar.dlna.transcoding.Transcoder;
 public final class TranscodeService implements PrefetchTarget {
 
     /** Pipeline version in every cache key; bump to invalidate caches when the encoder output changes. */
-    private static final String PIPELINE = "v1";
+    private static final String PIPELINE = "v2";
     private static final int MIDI_RATE = 48_000;
     private static final int MEMO_LIMIT = 20_000;
 
@@ -44,6 +44,8 @@ public final class TranscodeService implements PrefetchTarget {
     private final TranscodeCache cache;
     private final boolean enabled;
     private final int defaultBitrateKbps;
+    private final int defaultBits;
+    private final int defaultMaxRate;
     private final String midiStamp;
     private final RenderedLengthSink sink;
     private final Map<String, SourceLength> memo = Collections.synchronizedMap(
@@ -61,12 +63,62 @@ public final class TranscodeService implements PrefetchTarget {
      */
     public TranscodeService(Transcoder transcoder, TranscodeCache cache, boolean enabled, int defaultBitrateKbps,
             String midiStamp, RenderedLengthSink sink) {
+        this(transcoder, cache, enabled, defaultBitrateKbps, 16, 0, midiStamp, sink);
+    }
+
+    /**
+     * @param defaultBits    sample size of the PCM based forms offered by default: 16 or 24
+     * @param defaultMaxRate sources faster than this are resampled in the PCM based forms; 0 = never
+     */
+    public TranscodeService(Transcoder transcoder, TranscodeCache cache, boolean enabled, int defaultBitrateKbps,
+            int defaultBits, int defaultMaxRate, String midiStamp, RenderedLengthSink sink) {
+        this.defaultBits = defaultBits >= 24 ? 24 : 16;
+        this.defaultMaxRate = Math.max(0, defaultMaxRate);
         this.transcoder = transcoder;
         this.cache = cache;
         this.enabled = enabled;
         this.defaultBitrateKbps = defaultBitrateKbps;
         this.midiStamp = midiStamp == null ? "" : midiStamp;
         this.sink = sink == null ? RenderedLengthSink.NONE : sink;
+    }
+
+    private volatile java.util.Set<String> passthrough = java.util.Set.of();
+    private final Map<String, org.kendar.dlna.transcoding.Slices.Slice> slices = Collections.synchronizedMap(
+            new LinkedHashMap<>(64, 0.75f, true) {
+                private static final long serialVersionUID = 1L;
+
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, org.kendar.dlna.transcoding.Slices.Slice> e) {
+                    return size() > 2_000;
+                }
+            });
+
+    /** Formats ("wav", "mp3") whose virtual tracks are served as a cut of the original instead of re-encoded. */
+    public TranscodeService passthrough(java.util.Collection<String> formats) {
+        this.passthrough = java.util.Set.copyOf(formats);
+        return this;
+    }
+
+    /** Whether a virtual track is served as a cut of its original file. */
+    public boolean canSlice(Track t) {
+        if (!t.isSegment() || t.format().rendered()) {
+            return false;
+        }
+        return (t.format() == Format.WAV && passthrough.contains("wav"))
+                || (t.format() == Format.MP3 && passthrough.contains("mp3"));
+    }
+
+    /** The body of a virtual track cut from the original (see {@link #canSlice}). */
+    public StreamBody sliceBody(Track t, Path file) throws IOException {
+        String key = memoKey(t) + "|" + t.segment().startSample() + "-" + t.segment().endSample();
+        org.kendar.dlna.transcoding.Slices.Slice slice = slices.get(key);
+        if (slice == null) {
+            slice = t.format() == Format.WAV
+                    ? org.kendar.dlna.transcoding.Slices.wav(file, t.segment().startSample(), t.segment().endSample())
+                    : org.kendar.dlna.transcoding.Slices.mp3(file, t.segment().startSample(), t.segment().endSample());
+            slices.put(key, slice);
+        }
+        return new SliceBody(file, slice, MediaTypes.mimeType(t.format()), MediaTypes.contentFeatures(t.format()));
     }
 
     public boolean enabled() {
@@ -77,6 +129,14 @@ public final class TranscodeService implements PrefetchTarget {
         return defaultBitrateKbps;
     }
 
+    public int defaultBits() {
+        return defaultBits;
+    }
+
+    public int defaultMaxRate() {
+        return defaultMaxRate;
+    }
+
     public TranscodeCache cache() {
         return cache;
     }
@@ -85,6 +145,20 @@ public final class TranscodeService implements PrefetchTarget {
     public boolean canTranscode(Format format) {
         return enabled && (!format.rendered() || transcoder.midiAvailable())
                 && (!format.needsFfmpeg() || transcoder.ffmpegAvailable());
+    }
+
+    /**
+     * Whether the variant can be produced for the format: the lossless encodings need ffmpeg, and DSD delivered as DoP
+     * only exists as 24-bit PCM.
+     */
+    public boolean canProduce(Format format, StreamVariant v) {
+        if (!canTranscode(format)) {
+            return false;
+        }
+        if ((v.kind() == StreamVariant.Kind.FLAC || v.kind() == StreamVariant.Kind.ALAC) && !transcoder.ffmpegAvailable()) {
+            return false;
+        }
+        return !(format == Format.DSD && Ffmpeg.dsdDop() && (!v.kind().pcm() || v.bits() < 24));
     }
 
     private static SourceFormat sourceFormat(Format f) {
@@ -123,10 +197,17 @@ public final class TranscodeService implements PrefetchTarget {
         return t.ref().qualified() + "|" + t.mtime() + "|" + t.size();
     }
 
-    /** Exact byte length of the transcoded form for a source length. */
+    /** Exact byte length of the transcoded form for a source length; -1 when only known after encoding (FLAC, ALAC). */
     public static long lengthOf(SourceLength src, StreamVariant resolved) {
-        return resolved.kind() == StreamVariant.Kind.LPCM ? Transcoder.lpcmLength(src.samples())
-                : Transcoder.mp3Length(src.samples(), src.sampleRate(), resolved.bitrateKbps());
+        return Transcoder.length(resolved.output(), src.sampleRate(), src.samples());
+    }
+
+    /** The sample rate of the PCM a transcode of a source at {@code rate} delivers (MP3 is always 48 kHz). */
+    public static int outputRate(int rate, StreamVariant v) {
+        if (v.kind() == StreamVariant.Kind.MP3) {
+            return 48_000;
+        }
+        return v.maxRate() > 0 && rate > v.maxRate() ? v.maxRate() : rate;
     }
 
     // ---- bodies --------------------------------------------------------------------------------------------------
@@ -134,7 +215,8 @@ public final class TranscodeService implements PrefetchTarget {
     private String cacheKey(Track t, StreamVariant v) {
         return TranscodeCache.key(PIPELINE, t.ref().qualified(), t.mtime(), t.size(), v.path(),
                 t.format().rendered() ? midiStamp
-                : t.isSegment() ? t.segment().startSample() + "-" + t.segment().endSample() : "");
+                : (t.isSegment() ? t.segment().startSample() + "-" + t.segment().endSample() : "")
+                        + (t.format() == Format.DSD ? "dsd" + Ffmpeg.dsdPcmRate() + (Ffmpeg.dsdDop() ? "dop" : "") : ""));
     }
 
     private static TranscodeCache.Source cacheSource(Track t, StreamVariant v) {
@@ -142,11 +224,11 @@ public final class TranscodeService implements PrefetchTarget {
     }
 
     private static String mimeOf(StreamVariant v, int rate) {
-        return v.kind() == StreamVariant.Kind.LPCM ? LpcmStream.mimeType(rate) : "audio/mpeg";
+        return MediaTypes.mimeType(v, outputRate(rate, v));
     }
 
     private static String featuresOf(StreamVariant v) {
-        return v.kind() == StreamVariant.Kind.LPCM ? MediaTypes.lpcmFeatures() : MediaTypes.transcodedMp3Features();
+        return MediaTypes.features(v);
     }
 
     /**
@@ -157,10 +239,11 @@ public final class TranscodeService implements PrefetchTarget {
     public StreamBody body(Track t, Path file, StreamVariant requested) throws IOException {
         StreamVariant v = requested.resolved(defaultBitrateKbps);
         String key = cacheKey(t, v);
-        if (t.format().rendered()) {
+        if (t.format().rendered() || !v.kind().fixedLength()) {
+            int rate = t.format().rendered() ? MIDI_RATE : sourceOf(t, file).sampleRate();
             Path cached = cache.getOrCreate(key, cacheSource(t, v), (out, cancelled) -> produce(t, file, v, out,
                     cancelled), () -> false);
-            return new StreamBody.FileBody(cached, Files.size(cached), mimeOf(v, MIDI_RATE), featuresOf(v));
+            return new StreamBody.FileBody(cached, Files.size(cached), mimeOf(v, rate), featuresOf(v));
         }
         SourceLength src = sourceOf(t, file);
         long length = lengthOf(src, v);
@@ -224,15 +307,9 @@ public final class TranscodeService implements PrefetchTarget {
     }
 
     private InputStream open(Track t, Path file, StreamVariant v, long offset) throws IOException {
-        SourceFormat f = sourceFormat(t.format());
-        if (t.isSegment()) {
-            long s = t.segment().startSample();
-            long e = t.segment().endSample();
-            return v.kind() == StreamVariant.Kind.LPCM ? transcoder.openLpcm(f, file, offset, s, e)
-                    : transcoder.openMp3(f, file, v.bitrateKbps(), offset, s, e);
-        }
-        return v.kind() == StreamVariant.Kind.LPCM ? transcoder.openLpcm(f, file, offset)
-                : transcoder.openMp3(f, file, v.bitrateKbps(), offset);
+        long s = t.isSegment() ? t.segment().startSample() : -1;
+        long e = t.isSegment() ? t.segment().endSample() : -1;
+        return transcoder.open(sourceFormat(t.format()), file, v.output(), offset, s, e);
     }
 
     /** Writes the whole transcoded form (from offset 0) to {@code out}. */
@@ -244,8 +321,7 @@ public final class TranscodeService implements PrefetchTarget {
                     ? transcoder.renderAbc(file, t.isSegment() ? t.segment().index() : 1)
                     : transcoder.renderMidi(file);
             sink.rendered(t, r.frames(), Math.round(r.frames() * 1000.0 / MIDI_RATE));
-            in = v.kind() == StreamVariant.Kind.LPCM ? Transcoder.openLpcm(r, 0)
-                    : Transcoder.openMp3(r, v.bitrateKbps(), 0);
+            in = Transcoder.open(r, v.output(), 0);
         } else {
             in = open(t, file, v, 0);
         }
@@ -265,7 +341,7 @@ public final class TranscodeService implements PrefetchTarget {
 
     @Override
     public boolean needsPrefetch(Track t, StreamVariant requested) {
-        if (!requested.transcoded() || !canTranscode(t.format())) {
+        if (!requested.transcoded() || !canProduce(t.format(), requested)) {
             return false;
         }
         return !cache.contains(cacheKey(t, requested.resolved(defaultBitrateKbps)));

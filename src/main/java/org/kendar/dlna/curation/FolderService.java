@@ -430,8 +430,16 @@ public final class FolderService {
         if (!present) {
             return Optional.empty();
         }
-        Path p = directory(ref).resolve(kind.fileName());
-        return Files.isRegularFile(p) ? Optional.of(p) : Optional.empty();
+        Path dir = directory(ref);
+        java.util.List<String> names = new java.util.ArrayList<>();
+        try (java.nio.file.DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
+            ds.forEach(c -> names.add(c.getFileName().toString()));
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+        Optional<String> best = kind == ArtKind.FRONT ? org.kendar.dlna.shared.ArtNames.pickFront(names)
+                : org.kendar.dlna.shared.ArtNames.pickRear(names);
+        return best.map(dir::resolve).filter(Files::isRegularFile);
     }
 
     static byte[] toJpeg(byte[] data) {

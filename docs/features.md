@@ -16,7 +16,7 @@ Contents: [library and scanning](#library-and-scanning) - [settings.json](#setti
 |---|---|---|
 | Roots | Named directories: `"Music": "/music"`. The root name is the first segment of every object path. Order = configured order (display order under "Folders"). Names must not contain `/` or `\`. A root that is not a directory is skipped with a scan error | `library.roots` |
 | What is scanned | Directories recursively (hidden entries - names starting with `.` - are skipped; symbolic links are not followed). Files are recognised **by extension** (see [formats](#formats-matrix)); `settings.json`, `front.jpg`, `rear.jpg` (case-insensitive) in a directory are read as directory settings and art; `list.json` as per-file metadata ([reference](#listjson-reference)) | - |
-| Unsupported files | Audio-looking files that are not served are listed (path, size, reason) on the Admin page and `GET /api/v1/admin/unsupported`: extensions with no decoder (`.wma .ape .wv .mpc .m4b .alac .dsf .dff`), formats refused by a decoder probe (HE-AAC, ...), MIDI when rendering is unavailable, and unreadable files (`unreadable: ...`, also counted as scan error) | - |
+| Unsupported files | Audio-looking files that are not served are listed (path, size, reason) on the Admin page and `GET /api/v1/admin/unsupported`: extensions with no decoder (`.alac`), formats that need ffmpeg when it is missing (`.wma .ape .wv .mpc .m4b .dsf .dff`, HE-AAC), formats refused by a decoder probe, MIDI when rendering is unavailable, and unreadable files (`unreadable: ...`, also counted as scan error) | - |
 | Tag reading | Parallel (8 at a time, virtual threads). A file that cannot be read never fails the scan | - |
 | Incremental rescan | A track whose **mtime and size** equal the indexed ones (and whose kind - extension/codec - is the same) is taken over without reading its tags. Directories, `settings.json`, `list.json`, art and playlists are always re-read (cheap); when a directory's `list.json` content changed since the last scan, the tags of that directory's tracks are re-read too | - |
 | Force re-read | `force` ignores the mtime+size shortcut and re-reads every file in scope. Use after an upgrade that reads more tags (e.g. composer) or when tags changed without size/mtime change. First-seen time (`addedAt`) is kept | Admin page / Library page tick box "Re-read all tags"; REST `POST /api/v1/admin/rescan {"force":true}` |
@@ -274,7 +274,10 @@ Whole-library variants: put the setting on the root directory. The admin page li
 
 ## Artwork
 
-* Track image: `front.jpg` in its directory, else the track's embedded picture (the first picture jaudiotagger finds:
+* Folder image files: front `front`, `cover`, `folder`, `album`, `albumart`, `albumartlarge`; rear `rear`, `back`;
+  extensions `jpg`, `jpeg`, `png`, `gif`, `bmp` (any case). The best name wins, then the best type (JPEG first); the admin UI
+  always writes `front.jpg` / `rear.jpg`. Other types (WebP, TIFF) are ignored. A change of this list needs one rescan.
+* Track image: the front image file in its directory (usually `front.jpg`), else the track's embedded picture (the first picture jaudiotagger finds:
   ID3 APIC, FLAC/Vorbis picture, MP4 `covr`; not for Opus/ADTS/MIDI). Directory image: `front.jpg`, else the embedded picture of the first track that has one (direct tracks, then
   subdirectories, depth first).
 * `rear.jpg` is for the web UI only (never in DIDL).
@@ -318,8 +321,9 @@ Unsupported or refused (listed with the reason on the Admin page, never exposed 
 
 | Case | Reason shown / note |
 |---|---|
-| `.wma .ape .wv .mpc .m4b .alac .dsf .dff` | "no decoder for .<ext>" |
-| HE-AAC (SBR/PS) | JAAD's SBR decoder fails on real streams, so it is refused up front |
+| `.alac` | "no decoder for .alac" |
+| `.wma .ape .wv .mpc .m4b .dsf .dff` without ffmpeg | "<FORMAT> needs ffmpeg: ..." |
+| HE-AAC (SBR/PS), AAC profiles other than LC without ffmpeg | JAAD's SBR decoder fails on real streams, so the Java decoder refuses it up front; ffmpeg decodes it when available |
 | AAC Main/LTP/SSR/ER/USAC, ADTS with several raw blocks | refused |
 | MP4 with a video track, fragmented MP4, DRM, MP3 inside MP4 | refused |
 | ALAC with more than 2 channels or other than 16/24 bit | refused |
@@ -515,13 +519,14 @@ From the code and the other documents:
 * **Eventing**: commits within a few milliseconds coalesce (earlier `ContainerUpdateIDs` can be lost, the latest is
   always announced); jUPnP drops `SystemUpdateID` events within 200 ms of the previous one. `[Random N]` containers are
   not announced.
-* `SortCriteria` of Browse/Search is ignored (`GetSortCapabilities` is empty).
+* `SortCriteria` of Browse/Search sorts by title, creator / artist, album, genre, track number, date and class
+  (`GetSortCapabilities`); other properties are ignored, and containers are always listed before items (DIDL writer).
 * No filesystem watcher, no gapless playback, no client queues, no authentication or HTTPS on the DLNA side, sessions
   are lost at restart.
-* **Client profiles are untested guesses**: the built-ins are provisional, no real renderer has been verified
+* **Client profiles are untested guesses**: the built-ins (derived from Universal Media Server's renderer files, plus a few older guesses) have not been verified with real renderers
   ([client-compatibility.md](client-compatibility.md)); `DLNA.ORG_FLAGS` is one constant for all audio `res`;
   Opus and Vorbis share `audio/ogg`.
-* **Formats**: HE-AAC, AAC profiles other than LC, DSD, WMA, APE, WavPack and others are unsupported. AAC encoders other
+* **Formats**: HE-AAC, AAC profiles other than LC, DSD, WMA, APE, WavPack, Musepack and `.m4b` need ffmpeg; DST-compressed DSD is not supported. AAC encoders other
   than ffmpeg's and Microsoft's, and iTunes-made ALAC, are untested. AAC with perceptual noise substitution decodes
   with a non-reproducible noise (a seeked transcode differs from a continuous one in those bands, not in length).
   Real renderers have not been tried with `audio/mp4` native `res`. Opus: very large files, chained streams and embedded
@@ -530,9 +535,17 @@ From the code and the other documents:
   quality only checked with GeneralUser GS 2.0.3; needs the JVM flag and a SoundFont; one render at a time.
 * **Tags**: Opus and raw `.aac` cannot be edited; MIDI only title/artist/year; writes set single values (multi-value
   tags are collapsed on the edited fields); tag edits need write access.
-* **Cue sheets / chapters**: cue sheets for formats we cannot decode (APE, WavPack, WMA, ...) are ignored (see
-  [todo-ffmpeg.md](todo-ffmpeg.md)); native FLAC CUESHEET blocks and QuickTime chapter tracks are not read; virtual
-  tracks are never served as a byte range of the original file.
+* **Cue sheets / chapters**: native FLAC CUESHEET blocks and QuickTime chapter tracks are not read; virtual
+  tracks are re-encoded, except WAV sections (and MP3 ones with `transcode.passthrough`), which are cut from the
+  original (see [transcoding.md](transcoding.md#virtual-tracks)).
+* **Transcoding**: output forms are MP3, LPCM, WAV, FLAC and ALAC (FLAC / ALAC need ffmpeg and have no `size` in the
+  `res`); resampling is a windowed-sinc low-pass (down only), bit depth is 16 or 24; DoP only as 24-bit LPCM / WAV /
+  FLAC. Rules match by format, device (client profile id), source sample rate and bitrate. See
+  [transcoding.md](transcoding.md#output-forms-resampling-and-bit-depth).
+* **Playlist files**: any signed-in user imports M3U / M3U8 / PLS files into their own playlists and exports them
+  (web UI: *Playlists* page and the playlist page; REST in [rest-api.md](rest-api.md#playlists-own)). Entries are matched
+  to the user's allowed roots by catalog path or by the tail of the path; unmatched entries are reported, never guessed.
+  Only own playlists are exported, never system or other users' ones; XSPF and other formats are not supported.
 * **Settings**: no inheritance; `sort: mtime` of directories depends on directory mtimes.
 * Random N identity is IP + User-Agent: two apps with the same UA on one device share a snapshot; a client that changes
   UA between Browse and stream loses the context for prefetch.

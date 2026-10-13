@@ -30,10 +30,10 @@ Only the server side is started (no control-point protocols). Spec-violation rep
 
 | Action | Behaviour |
 |---|---|
-| `Browse` | `BrowseDirectChildren` and `BrowseMetadata`; see [browse behaviour](#browse-behaviour). `SortCriteria` is **ignored** (order comes from `settings.json`). Receives the caller's IP/User-Agent for per-client Random N and client profiles |
-| `Search` | See [search](#search). `SortCriteria` ignored (hits come in catalog display order) |
+| `Browse` | `BrowseDirectChildren` and `BrowseMetadata`; see [browse behaviour](#browse-behaviour). `SortCriteria` sorts the children before paging (see [sorting](#sorting)); without it the order comes from `settings.json`. Receives the caller's IP/User-Agent for per-client Random N and client profiles |
+| `Search` | See [search](#search). `SortCriteria` sorts the hits before paging (see [sorting](#sorting)); without it they come in catalog display order |
 | `GetSearchCapabilities` | `dc:title,upnp:artist,upnp:album,upnp:genre,dc:creator,upnp:author,upnp:class` |
-| `GetSortCapabilities` | empty string |
+| `GetSortCapabilities` | `dc:title,dc:creator,upnp:artist,upnp:album,upnp:genre,upnp:originalTrackNumber,dc:date,upnp:class` |
 | `GetSystemUpdateID` | The catalog snapshot version (unsigned 32 bit) |
 
 State variables: `SystemUpdateID` and `ContainerUpdateIDs` are evented (see [events](#update-ids-and-eventing)).
@@ -178,7 +178,7 @@ of the first track having some: direct tracks first, then subdirectories depth-f
 | `upnp:genre` | effective genre (overlay wins) |
 | `upnp:originalTrackNumber` | track number tag |
 | `dc:date` | `YYYY-01-01` from the effective year (overlay wins), when > 0 |
-| `upnp:albumArtURI` | `/art/f/<dirId>/tn` when the directory has `front.jpg`, else `/art/t/<trackId>/tn` when the track has embedded art; absent otherwise. With `dlna:profileID="JPEG_TN"` |
+| `upnp:albumArtURI` | `/art/f/<dirId>/tn` when the directory has a front image (`front.jpg`, `cover.png`, ... see features.md), else `/art/t/<trackId>/tn` when the track has embedded art; absent otherwise. With `dlna:profileID="JPEG_TN"` |
 | `res` | see below |
 
 The disc number is not emitted. Optional properties are filtered by the request `Filter` (blank or `*` = everything;
@@ -305,6 +305,17 @@ upnp:class derivedFrom "object.item.audioItem" and dc:title contains "love"
 upnp:class = "object.container.storageFolder" and dc:title contains "live"
 ```
 
+## Sorting
+
+`SortCriteria` (Browse and Search) is a list such as `+dc:title,-upnp:artist`. Supported properties (also the
+`GetSortCapabilities` answer): `dc:title`, `dc:creator`, `upnp:artist`, `upnp:album`, `upnp:genre`,
+`upnp:originalTrackNumber`, `dc:date`, `upnp:class`. The sort is stable and applied before `StartingIndex` / `RequestedCount`;
+text compares case-insensitively, numbers numerically, and objects without a value for a key come last whatever the
+direction. Folders sort by their title; the artist, album, genre, track number and date of a track are the effective
+values (after the directory's `settings.json` overlay). A property the server does not list is ignored; a malformed
+list is UPnP error 709. Without `SortCriteria` the order is the configured one. The DIDL writer always lists containers
+before items, so sorting orders containers among themselves and items among themselves.
+
 ## Update ids and eventing
 
 * `SystemUpdateID` = version of the catalog snapshot; bumped **once per committed change** (a rescan that changed
@@ -327,9 +338,11 @@ Profiles decide per renderer which formats are native, the order of the `res` el
 Resolution: for each Browse/Search the profile whose `match` holds first wins - inline `clients.profiles`, then the
 profiles of `clients.profilesFile`, then (if `clients.builtins`) the built-in ones - else the default profile.
 A user profile with a built-in's id replaces that built-in. Full field and validation reference:
-[configuration.md](configuration.md#clients-section). Built-ins (provisional guesses, see
-[client-compatibility.md](client-compatibility.md)): `vlc`, `bubbleupnp`, `kodi`, `foobar2000`, `wmp`, `samsung-tv`,
-`lg-tv` (`src/main/resources/clients/builtin-profiles.json`).
+[configuration.md](configuration.md#clients-section). Built-ins (see [client-compatibility.md](client-compatibility.md)): about 150 profiles generated from the renderer
+files of the open source Universal Media Server (`ums-*` ids: Samsung, LG, Sony Bravia, Panasonic Viera, Philips, Denon,
+Yamaha, Onkyo, Naim, Linn, Lumin, Roku, Xbox, PlayStation, Chromecast / Android, VLC, Kodi, ...), most specific
+User-Agent pattern first, followed by the older provisional `vlc`, `bubbleupnp`, `kodi`, `foobar2000`, `wmp`,
+`samsung-tv`, `lg-tv` (`src/main/resources/clients/builtin-profiles.json`).
 
 `res` plan per format (`ClientProfile.resPlan`):
 

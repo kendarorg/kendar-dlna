@@ -1,6 +1,7 @@
 package org.kendar.dlna.platform;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -134,19 +135,33 @@ public record AppConfig(Library library, Network network, Server server, Random 
      * @param soundFontPath         SF2 file for MIDI rendering; null = the bundled GeneralUser GS if present
      * @param midiSilenceThreshold  absolute 16-bit amplitude regarded as silence when trimming the tail (0..2000)
      * @param midiMaxTailSeconds    longest tail rendered after the last MIDI event (0..120)
-     * @param ffmpegPath           the ffmpeg binary for WMA and APE (a name looked up on the PATH, or a path); null = "ffmpeg"
+     * @param ffmpegPath           the ffmpeg binary for WMA, APE, DSD, WavPack, MPC, m4b, HE-AAC and the FLAC / ALAC
+     *                             output (a name looked up on the PATH, or a path); null = "ffmpeg"
+     * @param output                sample size, rate cap and DSD handling of the PCM based outputs
+     * @param rules                 ordered transcoding rules, the first match wins (see {@link Rule})
+     * @param passthrough           formats whose virtual tracks (cue / chapter / ABC sections) are served as a cut of
+     *                              the original file instead of being re-encoded: "wav" (exact) and "mp3" (frame
+     *                              granular); default only "wav"
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Transcode(Boolean enabled, Integer bitrateKbps, Boolean prefetch, Integer prefetchJobs,
             Integer cacheMaxMb, Integer cacheTtlHours, String soundFontPath, Integer midiSilenceThreshold,
-            Integer midiMaxTailSeconds, String ffmpegPath) {
+            Integer midiMaxTailSeconds, String ffmpegPath, Output output, List<Rule> rules, List<String> passthrough) {
+
+        /** Without an ffmpeg location, output settings, rules or passthrough of its own. */
+        public Transcode(Boolean enabled, Integer bitrateKbps, Boolean prefetch, Integer prefetchJobs,
+                Integer cacheMaxMb, Integer cacheTtlHours, String soundFontPath, Integer midiSilenceThreshold,
+                Integer midiMaxTailSeconds, String ffmpegPath) {
+            this(enabled, bitrateKbps, prefetch, prefetchJobs, cacheMaxMb, cacheTtlHours, soundFontPath,
+                    midiSilenceThreshold, midiMaxTailSeconds, ffmpegPath, null, null, null);
+        }
 
         /** Without an ffmpeg location of its own (looked up on the PATH). */
         public Transcode(Boolean enabled, Integer bitrateKbps, Boolean prefetch, Integer prefetchJobs,
                 Integer cacheMaxMb, Integer cacheTtlHours, String soundFontPath, Integer midiSilenceThreshold,
                 Integer midiMaxTailSeconds) {
             this(enabled, bitrateKbps, prefetch, prefetchJobs, cacheMaxMb, cacheTtlHours, soundFontPath,
-                    midiSilenceThreshold, midiMaxTailSeconds, null);
+                    midiSilenceThreshold, midiMaxTailSeconds, null, null, null, null);
         }
 
         public Transcode {
@@ -160,6 +175,72 @@ public record AppConfig(Library library, Network network, Server server, Random 
             soundFontPath = soundFontPath == null || soundFontPath.isBlank() ? null : soundFontPath.strip();
             midiSilenceThreshold = midiSilenceThreshold == null ? 16 : midiSilenceThreshold;
             midiMaxTailSeconds = midiMaxTailSeconds == null ? 10 : midiMaxTailSeconds;
+            output = output == null ? new Output(null, null, null, null) : output;
+            rules = rules == null ? List.of() : List.copyOf(rules);
+            passthrough = passthrough == null ? List.of("wav")
+                    : passthrough.stream().map(p -> p.strip().toLowerCase(java.util.Locale.ROOT)).toList();
+        }
+
+        /** Copy with the SoundFont and ffmpeg paths replaced. */
+        Transcode withPaths(String soundFont, String ffmpeg) {
+            return new Transcode(enabled, bitrateKbps, prefetch, prefetchJobs, cacheMaxMb, cacheTtlHours, soundFont,
+                    midiSilenceThreshold, midiMaxTailSeconds, ffmpeg, output, rules, passthrough);
+        }
+    }
+
+    /**
+     * Output controls of the PCM based forms (LPCM, WAV, FLAC, ALAC) and of DSD.
+     *
+     * @param maxSampleRate sources faster than this are resampled down to it; 0 = keep the source rate
+     * @param bitDepth      16 or 24 bit samples
+     * @param dsdPcmRate    rate DSD is decimated to: 44100, 88200 or 176400 (the 48 kHz family scales along)
+     * @param dsdMode       "pcm" (decimated) or "dop" (DSD over PCM: 24-bit LPCM, WAV or FLAC only)
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Output(Integer maxSampleRate, Integer bitDepth, Integer dsdPcmRate, String dsdMode) {
+        public Output {
+            maxSampleRate = maxSampleRate == null ? 0 : maxSampleRate;
+            bitDepth = bitDepth == null ? 16 : bitDepth;
+            dsdPcmRate = dsdPcmRate == null ? 44_100 : dsdPcmRate;
+            dsdMode = dsdMode == null || dsdMode.isBlank() ? "pcm" : dsdMode.strip().toLowerCase(java.util.Locale.ROOT);
+        }
+
+        public boolean dop() {
+            return "dop".equals(dsdMode);
+        }
+    }
+
+    /**
+     * One transcoding rule: all given conditions must hold, and the first matching rule decides what a track is
+     * offered as.
+     *
+     * @param formats              source formats (flac, wav, dsd, ...); empty = any
+     * @param profiles             client profile ids; empty = any (this is how a rule is limited to a device)
+     * @param minSampleRate        source sample rate at least this; 0 = no condition
+     * @param maxSampleRate        source sample rate at most this; 0 = no condition
+     * @param minBitrateKbps       source bitrate at least this; 0 = no condition
+     * @param maxBitrateKbps       source bitrate at most this; 0 = no condition
+     * @param action               "native" (the original only), or the form to offer: "mp3", "lpcm", "wav", "flac", "alac"
+     * @param bitrateKbps          MP3 bitrate for "mp3"; 0 = the default
+     * @param outputMaxSampleRate  sample rate cap of the PCM based forms; null = the output default
+     * @param outputBitDepth       bit depth of the PCM based forms; null = the output default
+     * @param hideOriginal         also drop the original from the offers
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Rule(List<String> formats, List<String> profiles, Integer minSampleRate, Integer maxSampleRate,
+            Integer minBitrateKbps, Integer maxBitrateKbps, String action, Integer bitrateKbps,
+            Integer outputMaxSampleRate, Integer outputBitDepth, Boolean hideOriginal) {
+        public Rule {
+            formats = formats == null ? List.of()
+                    : formats.stream().map(f -> f.strip().toUpperCase(java.util.Locale.ROOT)).toList();
+            profiles = profiles == null ? List.of() : List.copyOf(profiles);
+            minSampleRate = minSampleRate == null ? 0 : minSampleRate;
+            maxSampleRate = maxSampleRate == null ? 0 : maxSampleRate;
+            minBitrateKbps = minBitrateKbps == null ? 0 : minBitrateKbps;
+            maxBitrateKbps = maxBitrateKbps == null ? 0 : maxBitrateKbps;
+            action = action == null ? "" : action.strip().toLowerCase(java.util.Locale.ROOT);
+            bitrateKbps = bitrateKbps == null ? 0 : bitrateKbps;
+            hideOriginal = hideOriginal != null && hideOriginal;
         }
     }
 
@@ -174,9 +255,7 @@ public record AppConfig(Library library, Network network, Server server, Random 
         Library lib = new Library(roots, resolve(base, library.playlistsDir()), resolve(base, library.dataDir()),
                 library.mainRoot());
         Transcode t = transcode;
-        Transcode tc = new Transcode(t.enabled(), t.bitrateKbps(), t.prefetch(), t.prefetchJobs(), t.cacheMaxMb(),
-                t.cacheTtlHours(), t.soundFontPath() == null ? null : resolve(base, t.soundFontPath()),
-                t.midiSilenceThreshold(), t.midiMaxTailSeconds(),
+        Transcode tc = t.withPaths(t.soundFontPath() == null ? null : resolve(base, t.soundFontPath()),
                 t.ffmpegPath() != null && (t.ffmpegPath().contains("/") || t.ffmpegPath().contains("\\"))
                         ? resolve(base, t.ffmpegPath()) : t.ffmpegPath());
         return new AppConfig(lib, network, server, random, views, scan, tc, clients);
@@ -199,10 +278,8 @@ public record AppConfig(Library library, Network network, Server server, Random 
         if (path == null) {
             return this;
         }
-        Transcode t = transcode;
-        return new AppConfig(library, network, server, random, views, scan, new Transcode(t.enabled(), t.bitrateKbps(),
-                t.prefetch(), t.prefetchJobs(), t.cacheMaxMb(), t.cacheTtlHours(), t.soundFontPath(),
-                t.midiSilenceThreshold(), t.midiMaxTailSeconds(), path), clients);
+        return new AppConfig(library, network, server, random, views, scan, transcode.withPaths(transcode.soundFontPath(), path),
+                clients);
     }
 
     /** Copy with overridden values (used for env / system property overrides). */

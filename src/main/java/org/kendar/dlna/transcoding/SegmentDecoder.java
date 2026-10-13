@@ -29,6 +29,11 @@ public final class SegmentDecoder implements AudioDecoder {
     }
 
     @Override
+    public int frameBytes() {
+        return inner.frameBytes();
+    }
+
+    @Override
     public long totalSamples() {
         return total;
     }
@@ -45,7 +50,8 @@ public final class SegmentDecoder implements AudioDecoder {
         if (left <= 0) {
             return -1;
         }
-        int want = (int) Math.min(len & ~3, left * 4);
+        int fb = inner.frameBytes();
+        int want = (int) Math.min(len / fb * fb, left * fb);
         if (want <= 0) {
             return 0;
         }
@@ -53,12 +59,12 @@ public final class SegmentDecoder implements AudioDecoder {
         if (n < 0) {
             n = 0;
         }
-        n &= ~3;
+        n -= n % fb;
         if (n == 0) {
             Arrays.fill(buf, off, off + want, (byte) 0);   // the source ended early: pad with silence
             n = want;
         }
-        position += n / 4;
+        position += n / fb;
         return n;
     }
 

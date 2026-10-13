@@ -30,10 +30,16 @@ final class FfmpegDecoder extends FixedLengthDecoder {
 
     private final Path file;
     private final int rate;
+    private final boolean wide;
     private Process process;
     private InputStream out;
 
     static FfmpegDecoder open(Path file) throws IOException {
+        return open(file, false);
+    }
+
+    /** @param wide deliver stereo s24le (6-byte frames) instead of s16le */
+    static FfmpegDecoder open(Path file, boolean wide) throws IOException {
         if (!Ffmpeg.available()) {
             throw new IOException("ffmpeg is not available (" + Ffmpeg.binary() + "): cannot decode "
                     + file.getFileName());
@@ -42,11 +48,12 @@ final class FfmpegDecoder extends FixedLengthDecoder {
         if (info.frames() <= 0) {
             throw new IOException("no audio in " + file.getFileName());
         }
-        return new FfmpegDecoder(file, info);
+        return new FfmpegDecoder(file, info, wide);
     }
 
-    private FfmpegDecoder(Path file, Info info) {
-        super(info.frames());
+    private FfmpegDecoder(Path file, Info info, boolean wide) {
+        super(info.frames(), wide ? 6 : 4);
+        this.wide = wide;
         this.file = file;
         this.rate = info.sampleRate();
     }
@@ -76,7 +83,7 @@ final class FfmpegDecoder extends FixedLengthDecoder {
     }
 
     private void start(long frame) throws IOException {
-        process = decodeProcess(file, frame, rate);
+        process = decodeProcess(file, frame, rate, wide);
         out = process.getInputStream();
     }
 
@@ -99,7 +106,7 @@ final class FfmpegDecoder extends FixedLengthDecoder {
         }
         int rate = sampleRate(file);
         long bytes = 0;
-        Process p = decodeProcess(file, 0, rate);
+        Process p = decodeProcess(file, 0, rate, false);
         try (InputStream in = p.getInputStream()) {
             byte[] buf = new byte[256 * 1024];
             int n;
@@ -117,15 +124,8 @@ final class FfmpegDecoder extends FixedLengthDecoder {
         return info;
     }
 
-    /**
-     * The PCM rate delivered for a stream of {@code hz}: the source rate, except for DSD (megahertz rates) which is
-     * decimated to 44.1 kHz (48 kHz for the 48 kHz family).
-     */
     static int outputRate(int hz) {
-        if (hz <= 192_000) {
-            return hz;
-        }
-        return hz % 48_000 == 0 && hz % 44_100 != 0 ? 48_000 : 44_100;
+        return Ffmpeg.outputRate(hz);
     }
 
     /** The sample rate of the first audio stream, from the banner ffmpeg prints on stderr. */
@@ -146,14 +146,14 @@ final class FfmpegDecoder extends FixedLengthDecoder {
         throw new IOException("ffmpeg found no audio stream in " + file.getFileName());
     }
 
-    private static Process decodeProcess(Path file, long frame, int rate) throws IOException {
+    private static Process decodeProcess(Path file, long frame, int rate, boolean wide) throws IOException {
         List<String> cmd = new ArrayList<>(List.of(Ffmpeg.binary(), "-nostdin", "-hide_banner", "-v", "error"));
         if (frame > 0) {
             cmd.add("-ss");
             cmd.add(String.format(Locale.ROOT, "%.6f", frame / (double) rate));
         }
         cmd.addAll(List.of("-i", file.toString(), "-vn", "-map", "0:a:0", "-ac", "2", "-ar", Integer.toString(rate),
-                "-f", "s16le", "-"));
+                "-f", wide ? "s24le" : "s16le", "-"));
         return new ProcessBuilder(cmd).redirectError(ProcessBuilder.Redirect.DISCARD).start();
     }
 }

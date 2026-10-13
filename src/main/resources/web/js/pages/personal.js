@@ -24,6 +24,13 @@ const TABS = [
   { scope: 'system', to: '/system', label: 'nav.systemPlaylists' }
 ];
 
+/** The toast text of an import result: how many entries matched, and the first names that did not. */
+function importMessage(t, r) {
+  const missed = (r.unmatched || []).slice(0, 3).map(u => u.title || u.location);
+  return missed.length ? t('playlist.importedSkipped', { count: r.imported, total: r.total, names: missed.join(', ') })
+    : t('playlist.imported', { count: r.imported, total: r.total });
+}
+
 /** Mine / Shared / System lists of playlists. */
 export const PlaylistListPage = {
   name: 'PlaylistListPage',
@@ -44,6 +51,17 @@ export const PlaylistListPage = {
       } catch (e) { this.error = e.message; } finally { this.loading = false; }
     },
     route(p) { return playlistRoute(this.scope, p); },
+    async importFile(event) {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      this.busy = true; this.error = '';
+      try {
+        const r = await Api.importMyPlaylist(file);
+        toast(importMessage(this.$t.bind(this), r));
+        this.$router.push(playlistRoute('mine', r.playlist));
+      } catch (e) { this.error = e.message; } finally { this.busy = false; }
+    },
     async create() {
       if (!validName(this.name)) return;
       this.busy = true; this.error = '';
@@ -73,6 +91,8 @@ export const PlaylistListPage = {
       <form v-if="mine" class="row create" @submit.prevent="create">
         <input v-model="name" maxlength="200" :placeholder="$t('playlist.newName')" :aria-label="$t('playlist.newName')">
         <button type="submit" class="primary" :disabled="busy || !name.trim()"><icon name="add"></icon> {{ $t('playlist.create') }}</button>
+        <label class="button" :class="{ disabled: busy }"><icon name="add"></icon> {{ $t('playlist.fromFile') }}
+          <input type="file" accept=".m3u,.m3u8,.pls,audio/x-mpegurl,audio/mpegurl,audio/x-scpls" hidden :disabled="busy" @change="importFile"></label>
       </form>
       <p v-if="loading" class="muted">{{ $t('list.loading') }}</p>
       <p v-else-if="!lists.length" class="muted">{{ $t('playlist.empty.' + scope) }}</p>
@@ -197,6 +217,17 @@ export const PlaylistDetailPage = {
         this.$router.push(playlistRoute('mine', created));
       } catch (e) { this.error = e.message; } finally { this.busy = false; }
     },
+    async importInto(event) {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      this.busy = true; this.error = '';
+      try {
+        const r = await Api.importMyPlaylist(file, this.head.id);
+        toast(importMessage(this.$t.bind(this), r));
+        await this.load();
+      } catch (e) { this.error = e.message; } finally { this.busy = false; }
+    },
     play(shuffle) {
       if (!this.tracks.length) { toast(this.$t('toast.nothing')); return; }
       playList(this.tracks, { shuffle: shuffle });
@@ -205,6 +236,7 @@ export const PlaylistDetailPage = {
       const k = this.playableIndex[i];
       if (k >= 0) playList(this.tracks, { start: k });
     },
+    exportUrl(format) { return Api.exportMyPlaylistUrl(this.head.id, format); },
     menu(event) {
       openMenu(event, subjectFor(this.scope, Object.assign({}, this.head, { name: this.head.name })));
     },
@@ -263,6 +295,10 @@ export const PlaylistDetailPage = {
               <button type="button" :disabled="!tracks.length" @click="play(true)"><icon name="shuffle"></icon> {{ $t('player.shuffle') }}</button>
               <button v-if="!mine" type="button" :disabled="busy || !tracks.length" @click="copy"><icon name="copy"></icon> {{ $t('playlist.copyToMine') }}</button>
               <template v-if="mine">
+                <a class="button" :href="exportUrl('m3u8')" download>{{ $t('playlist.exportM3u') }}</a>
+                <a class="button" :href="exportUrl('pls')" download>{{ $t('playlist.exportPls') }}</a>
+                <label class="button" :class="{ disabled: busy }">{{ $t('playlist.importInto') }}
+                  <input type="file" accept=".m3u,.m3u8,.pls" hidden :disabled="busy" @change="importInto"></label>
                 <button v-if="!head.shared" type="button" :disabled="busy" @click="share(true)"><icon name="share"></icon> {{ $t('playlist.share') }}</button>
                 <button v-else type="button" :disabled="busy" @click="share(false)"><icon name="share"></icon> {{ $t('playlist.unshare') }}</button>
                 <template v-if="confirmDelete">

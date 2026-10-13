@@ -143,7 +143,7 @@ class TranscodedDeliveryTest {
 
     @Test
     void aCacheEntryOfTheWrongSizeIsNeverServed() throws Exception {
-        String key = TranscodeCache.key("v1", flac.ref().qualified(), flac.mtime(), flac.size(), "mp3-320", "");
+        String key = TranscodeCache.key("v2", flac.ref().qualified(), flac.mtime(), flac.size(), "mp3-320", "");
         cache.getOrCreate(key, new TranscodeCache.Source(flac.ref().qualified(), flac.mtime(), flac.size(), "mp3"),
                 (out, c) -> out.write(new byte[10]), () -> false);
         StreamResolver.Resolved r = resolver(service, null).resolve("GET", path(flac, "mp3"), null);

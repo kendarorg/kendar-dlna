@@ -18,11 +18,21 @@ public final class LpcmStream extends InputStream {
     private int limit;
     private long left;
     private long skip;
+    private final int fb;
     private boolean closed;
 
     /** Exact Content-Length of the whole stream. */
     public static long length(long samples) {
         return samples * 4;
+    }
+
+    /** Exact Content-Length for {@code bits} (16 or 24) per sample. */
+    public static long length(long samples, int bits) {
+        return samples * (bits > 16 ? 6 : 4);
+    }
+
+    public static String mimeType(int sampleRate, int bits) {
+        return "audio/L" + (bits > 16 ? 24 : 16) + ";rate=" + sampleRate + ";channels=2";
     }
 
     /** MIME type with the parameters L16 needs, e.g. {@code audio/L16;rate=44100;channels=2}. */
@@ -32,11 +42,12 @@ public final class LpcmStream extends InputStream {
 
     public LpcmStream(AudioDecoder decoder, long byteOffset) throws IOException {
         this.decoder = decoder;
-        long length = length(decoder.totalSamples());
+        this.fb = decoder.frameBytes();
+        long length = decoder.totalSamples() * fb;
         long offset = Math.max(0, Math.min(byteOffset, length));
-        long startFrame = offset / 4;
-        this.skip = offset % 4;
-        this.left = length - startFrame * 4;
+        long startFrame = offset / fb;
+        this.skip = offset % fb;
+        this.left = length - startFrame * fb;
         try {
             decoder.seek(startFrame);
         } catch (IOException | RuntimeException e) {
@@ -50,15 +61,23 @@ public final class LpcmStream extends InputStream {
             if (left <= 0 || closed) {
                 return false;
             }
-            int want = (int) Math.min(CHUNK, left);
+            int want = (int) Math.min(CHUNK / fb * fb, left);
             int n = decoder.read(buf, 0, want);
             if (n <= 0) {
                 return false;
             }
-            for (int i = 0; i + 1 < n; i += 2) {
-                byte t = buf[i];
-                buf[i] = buf[i + 1];
-                buf[i + 1] = t;
+            if (fb == 6) {
+                for (int i = 0; i + 2 < n; i += 3) {
+                    byte t = buf[i];
+                    buf[i] = buf[i + 2];
+                    buf[i + 2] = t;
+                }
+            } else {
+                for (int i = 0; i + 1 < n; i += 2) {
+                    byte t = buf[i];
+                    buf[i] = buf[i + 1];
+                    buf[i + 1] = t;
+                }
             }
             left -= n;
             pos = 0;

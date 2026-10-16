@@ -44,6 +44,11 @@ export function folderRoute(path) {
   return { path: '/folders', query: path ? { p: path } : {} };
 }
 
+/** A letter range of a folder (the folder listing with layout=ranges). */
+export function rangeRoute(path, rangeId) {
+  return { path: '/folders', query: rangeId ? { p: path, r: rangeId } : { p: path } };
+}
+
 export function searchRoute(q, kind) {
   return { path: '/search', query: kind ? { q: q, kind: kind } : { q: q } };
 }

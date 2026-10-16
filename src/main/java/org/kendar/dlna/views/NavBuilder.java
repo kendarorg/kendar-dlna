@@ -91,7 +91,7 @@ final class NavBuilder {
         }
         String tag = levels.get(depth);
         List<Group> groups = groups(tag, pool, depth > 0 && peopleTag(levels.get(depth - 1)));
-        List<ViewNode> nodes = place(logical, visual, groups, depth, albumSeen || tag.equalsIgnoreCase("album"));
+        List<ViewNode> nodes = place(logical, visual, groups, depth, albumSeen || tag.equalsIgnoreCase("album"), 1);
         return new Content(nodes, List.of());
     }
 
@@ -101,8 +101,8 @@ final class NavBuilder {
     }
 
     /** Lists the groups under {@code visual}, through range containers when there are too many. */
-    private List<ViewNode> place(String logical, String visual, List<Group> groups, int depth, boolean albumSeen) {
-        List<Ranges.Group> rs = Ranges.split(groups.stream().map(Group::name).toList(), subitems, ranges);
+    private List<ViewNode> place(String logical, String visual, List<Group> groups, int depth, boolean albumSeen, int minWidth) {
+        List<Ranges.Group> rs = Ranges.split(groups.stream().map(Group::name).toList(), subitems, ranges, minWidth);
         if (rs.isEmpty()) {
             List<ViewNode> out = new ArrayList<>();
             for (Group g : groups) {
@@ -114,7 +114,7 @@ final class NavBuilder {
         for (int i = 0; i < rs.size(); i++) {
             Ranges.Group r = rs.get(i);
             String bucketId = visual + ".r" + i;
-            List<ViewNode> kids = place(logical, bucketId, groups.subList(r.from(), r.to()), depth, albumSeen);
+            List<ViewNode> kids = place(logical, bucketId, groups.subList(r.from(), r.to()), depth, albumSeen, r.width() + 1);
             out.add(register(new ViewNode(bucketId, visual, ViewNode.Type.BUCKET, r.label(), null, null, kids,
                     List.of(), kids.get(0).artTrack())));
         }
@@ -159,12 +159,12 @@ final class NavBuilder {
                     .trackTitle(e.track()), Normalizer.NATURAL).thenComparing(e -> e.track().ref()));
         }
         List<Track> tracks = sorted.stream().map(EffectiveTrack::track).toList();
-        return trackList(visual, tracks);
+        return trackList(visual, tracks, 1);
     }
 
-    private Content trackList(String visual, List<Track> tracks) {
+    private Content trackList(String visual, List<Track> tracks, int minWidth) {
         List<Ranges.Group> rs = Ranges.split(tracks.stream().map(org.kendar.dlna.catalog.DisplayNames::trackTitle)
-                .toList(), subitems, ranges);
+                .toList(), subitems, ranges, minWidth);
         if (rs.isEmpty()) {
             return new Content(List.of(), tracks);
         }
@@ -172,7 +172,7 @@ final class NavBuilder {
         for (int i = 0; i < rs.size(); i++) {
             Ranges.Group r = rs.get(i);
             String bucketId = visual + ".r" + i;
-            Content inner = trackList(bucketId, tracks.subList(r.from(), r.to()));
+            Content inner = trackList(bucketId, tracks.subList(r.from(), r.to()), r.width() + 1);
             out.add(register(new ViewNode(bucketId, visual, ViewNode.Type.BUCKET, r.label(), null, null,
                     inner.nodes(), inner.tracks(), first(inner))));
         }

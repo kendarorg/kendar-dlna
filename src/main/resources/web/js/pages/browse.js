@@ -10,7 +10,7 @@ import { Icon } from '../components/icons.js';
 import { createPager } from '../core/pager.js';
 import { sortItems } from '../core/list.js';
 import { formatTotal } from '../core/format.js';
-import { folderRoute, searchRoute } from '../core/urls.js';
+import { folderRoute, rangeRoute, searchRoute } from '../core/urls.js';
 import { toast } from '../state.js';
 
 const PAGE = 50;
@@ -21,6 +21,11 @@ function pagerFor(fetchPage, limit) {
 
 function storedLayout() {
   try { return localStorage.getItem('kd.folderLayout') === 'list' ? 'list' : 'tiles'; } catch (e) { return 'tiles'; }
+}
+
+/** How a folder is browsed: through its letter ranges (default) or as one list that loads while scrolling. */
+function storedBrowse() {
+  try { return localStorage.getItem('kd.folderBrowse') === 'scroll' ? 'scroll' : 'ranges'; } catch (e) { return 'ranges'; }
 }
 
 const COMPONENTS = { TrackList, GroupGrid, InfiniteScroll, Cover, Icon };
@@ -75,17 +80,22 @@ export const FoldersPage = {
   name: 'FoldersPage',
   components: COMPONENTS,
   setup() { return { session: session }; },
-  data() { return { roots: null, head: null, pager: null, error: '', layout: storedLayout() }; },
+  data() { return { roots: null, head: null, pager: null, error: '', layout: storedLayout(), browse: storedBrowse() }; },
   computed: {
     path() { return this.$route.query.p || ''; },
+    rangeId() { return this.$route.query.r || ''; },
+    ranges() { return this.pager ? this.pager.state.items.filter(c => c.type === 'range') : []; },
     folders() { return this.pager ? this.pager.state.items.filter(c => c.type === 'folder') : []; },
     tracks() { return this.pager ? this.pager.state.items.filter(c => c.type === 'track').map(c => c.track) : []; },
     crumbs() {
       const parts = this.path ? this.path.split('/') : [];
-      return parts.map((name, i) => ({ name: name, to: folderRoute(parts.slice(0, i + 1).join('/')) }));
+      const out = parts.map((name, i) => ({ key: 'p' + i, name: name, to: folderRoute(parts.slice(0, i + 1).join('/')) }));
+      const trail = this.head && this.head.range ? this.head.range.trail : [];
+      for (const r of trail) out.push({ key: r.id, name: r.label, to: rangeRoute(this.path, r.id) });
+      return out;
     }
   },
-  watch: { path: { immediate: true, handler() { this.load(); } } },
+  watch: { path: { immediate: true, handler() { this.load(); } }, rangeId() { this.load(); } },
   methods: {
     async load() {
       this.error = ''; this.head = null; this.pager = null; this.roots = null;
@@ -98,9 +108,11 @@ export const FoldersPage = {
         return;
       }
       const path = this.path;
+      const rangeId = this.rangeId;
+      const ranged = this.browse === 'ranges';
       this.pager = pagerFor(async p => {
-        const r = await Api.folderPage(path, p);
-        if (path === this.path) this.head = r;
+        const r = await Api.folderPage(path, ranged ? Object.assign({ layout: 'ranges', range: rangeId }, p) : p);
+        if (path === this.path && rangeId === this.rangeId) this.head = r;
         return { items: r.children, total: r.total };
       }, 100);
     },
@@ -108,8 +120,32 @@ export const FoldersPage = {
       this.layout = l;
       try { localStorage.setItem('kd.folderLayout', l); } catch (e) { /* ignore */ }
     },
-    async all() { if (this.pager) await this.pager.loadAll(100); return this.tracks; },
-    async playAt(i) { const tracks = await this.all(); playList(tracks, { start: i }); },
+    /** Switching goes back to the start of the folder: the first range level, or the whole list. */
+    setBrowse(b) {
+      if (b === this.browse) return;
+      this.browse = b;
+      try { localStorage.setItem('kd.folderBrowse', b); } catch (e) { /* ignore */ }
+      if (this.rangeId) this.$router.replace(folderRoute(this.path)); else this.load();
+    },
+    rangeRoute(r) { return rangeRoute(this.path, r.id); },
+    rangeSub(r) {
+      const parts = [];
+      if (r.folderCount) parts.push(this.$tn('count.folders', r.folderCount));
+      if (r.trackCount) parts.push(this.$tn('count.tracks', r.trackCount));
+      return parts.join(' · ');
+    },
+    /** Every song directly in the folder, whatever range is open. */
+    async all() {
+      if (this.browse === 'ranges') return Api.folderTracks(this.path);
+      if (this.pager) await this.pager.loadAll(100);
+      return this.tracks;
+    },
+    async playAt(i) {
+      const clicked = this.tracks[i];
+      const tracks = await this.all();
+      const at = clicked ? tracks.findIndex(t => t.path === clicked.path) : -1;
+      playList(tracks, { start: at < 0 ? 0 : at });
+    },
     async playAll(shuffle) {
       const tracks = await this.all();
       if (!tracks.length) { toast(this.$t('toast.nothing')); return; }
@@ -133,7 +169,7 @@ export const FoldersPage = {
       <template v-else>
         <nav class="crumbs" :aria-label="$t('folders.breadcrumb')">
           <router-link :to="{ path: '/folders' }">{{ $t('nav.folders') }}</router-link>
-          <template v-for="c in crumbs" :key="c.to.query.p"><span class="sep">/</span><router-link :to="c.to">{{ c.name }}</router-link></template>
+          <template v-for="c in crumbs" :key="c.key"><span class="sep">/</span><router-link :to="c.to">{{ c.name }}</router-link></template>
         </nav>
         <header class="page-head with-art" v-if="head">
           <cover class="head-art" :art="head.art" size="medium" icon="folder"></cover>
@@ -148,13 +184,30 @@ export const FoldersPage = {
             </div>
           </div>
         </header>
-        <div v-if="folders.length" class="row layout-toggle" role="group" aria-label="Layout">
+        <div class="row layout-toggle" role="group" :aria-label="$t('folders.browse')">
+          <button type="button" :class="{ primary: browse === 'ranges' }" :aria-pressed="String(browse === 'ranges')" @click="setBrowse('ranges')">{{ $t('folders.browse.ranges') }}</button>
+          <button type="button" :class="{ primary: browse === 'scroll' }" :aria-pressed="String(browse === 'scroll')" @click="setBrowse('scroll')">{{ $t('folders.browse.scroll') }}</button>
+        </div>
+        <div v-if="folders.length || ranges.length" class="row layout-toggle" role="group" aria-label="Layout">
           <button type="button" :class="{ primary: layout === 'tiles' }" :aria-pressed="String(layout === 'tiles')" @click="setLayout('tiles')">Tiles</button>
           <button type="button" :class="{ primary: layout === 'list' }" :aria-pressed="String(layout === 'list')" @click="setLayout('list')">List</button>
         </div>
+        <ul v-if="ranges.length && layout === 'list'" class="group-list plain">
+          <li v-for="r in ranges" :key="r.id" class="group-row">
+            <router-link :to="rangeRoute(r)" class="grow">{{ r.label }}</router-link>
+            <span class="muted small">{{ rangeSub(r) }}</span>
+          </li>
+        </ul>
+        <div v-else-if="ranges.length" class="tiles">
+          <div v-for="r in ranges" :key="r.id" class="tile">
+            <div class="tile-art"><router-link :to="rangeRoute(r)" :aria-label="r.label" tabindex="-1"><cover :art="r.art" size="medium" icon="folder"></cover></router-link></div>
+            <router-link :to="rangeRoute(r)" class="tile-title">{{ r.label }}</router-link>
+            <div class="tile-sub">{{ rangeSub(r) }}</div>
+          </div>
+        </div>
         <group-grid v-if="folders.length" :items="folders" mode="folder" :layout="layout"></group-grid>
         <track-list v-if="tracks.length" :tracks="tracks" :numbered="true" :show-album="true" @play="playAt"></track-list>
-        <infinite-scroll v-if="pager" :key="path" :pager="pager" :empty-text="$t('folders.empty')"></infinite-scroll>
+        <infinite-scroll v-if="pager" :key="path + '|' + rangeId + '|' + browse" :pager="pager" :empty-text="$t('folders.empty')"></infinite-scroll>
       </template>
     </section>`
 };

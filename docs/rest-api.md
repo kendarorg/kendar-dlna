@@ -193,6 +193,12 @@ albumArtist, year, genre, discNumber, discTotal}, random, recent, views, art, tr
 limit, virtual, children: [ {type:"folder", path, name, displayName, virtual, art} | {type:"track", path, track} ] }`. `children` are in the
 `settings.sort` order; `random` is the directory's Random N (use `/library/random?path=`), `views` its configured views.
 
+Letter ranges: `layout=ranges` lists the folder through its ranges as on DLNA (name-sorted folders over `subitems` only; else
+the plain listing): `children` then also holds `{type:"range", id, label, trackCount, folderCount, art}` entries, `range=<id>`
+opens one (its `children` can be ranges again), the answer carries `layout` (`flat`|`ranges`) and, inside a range,
+`range: {id, label, parent, trail:[{id,label}]}`. An unknown `range` is a 404. The player page offers a switch between
+Ranges (default) and Infinite scrolling, remembered per browser.
+
 Track object (library): `{ path, name, title, artist, album, albumArtist, genre, composer, transcriber, year, trackNo, discNo,
 discTotal, format, durationMillis, bitrateKbps, sampleRate, channels, size, addedAt, playability: native|transcoded,
 streamFormat, art }`. `album`, `albumArtist`, `year`, `genre`, `discNo`, `discTotal` have the folder's album overlay

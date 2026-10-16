@@ -73,8 +73,8 @@ public final class FolderRanges {
         }
         Map<String, Range> index = new HashMap<>();
         List<Entry> top = new ArrayList<>();
-        group(folder.id(), "f", folders, sub, rng, null, top, index);
-        group(folder.id(), "t", tracks, sub, rng, null, top, index);
+        group(folder.id(), "f", folders, sub, rng, null, top, index, 1);
+        group(folder.id(), "t", tracks, sub, rng, null, top, index, 1);
         return new Layout(List.copyOf(top), Map.copyOf(index));
     }
 
@@ -84,8 +84,8 @@ public final class FolderRanges {
 
     /** Adds {@code items} to {@code out}: directly when short, else through range containers. */
     private static void group(String dirId, String path, List<Child> items, int sub, int rng, String parentId,
-            List<Entry> out, Map<String, Range> index) {
-        List<Ranges.Group> groups = Ranges.split(items.stream().map(FolderRanges::name).toList(), sub, rng);
+            List<Entry> out, Map<String, Range> index, int minWidth) {
+        List<Ranges.Group> groups = Ranges.split(items.stream().map(FolderRanges::name).toList(), sub, rng, minWidth);
         if (groups.isEmpty()) {
             items.forEach(c -> out.add(new Real(c)));
             return;
@@ -95,7 +95,7 @@ public final class FolderRanges {
             String id = CONTEXT_PREFIX + dirId + "." + path + i;
             List<Entry> inner = new ArrayList<>();
             // path of the next level continues after a dot so ids stay unambiguous
-            group(dirId, path + i + ".", items.subList(g.from(), g.to()), sub, rng, id, inner, index);
+            group(dirId, path + i + ".", items.subList(g.from(), g.to()), sub, rng, id, inner, index, g.width() + 1);
             Range r = new Range(id, parentId, g.label(), inner);
             index.put(id, r);
             out.add(r);

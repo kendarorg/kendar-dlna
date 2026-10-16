@@ -10,8 +10,8 @@ import java.util.Locale;
  */
 public final class Ranges {
 
-    /** The entries {@code [from, to)} of the list under one {@code label}. */
-    public record Group(int from, int to, String label) {
+    /** The entries {@code [from, to)} of the list under one {@code label}; {@code width} characters were compared. */
+    public record Group(int from, int to, String label, int width) {
         public int size() {
             return to - from;
         }
@@ -27,61 +27,90 @@ public final class Ranges {
      * @return the groups, or an empty list when the list is short enough (or {@code ranges < 2})
      */
     public static List<Group> split(List<String> names, int subitems, int ranges) {
+        return split(names, subitems, ranges, 1);
+    }
+
+    /**
+     * Same, for a list whose labels must be at least {@code minWidth} characters long (a list inside a range of
+     * width 1 uses 2: "A-D", then "A0-A9", "AA-BC"). The cuts fall only between different prefixes, so no prefix is
+     * in two ranges; the prefix grows (past {@code minWidth}) until the names offer at least {@code ranges}
+     * different ones, or the names are exhausted. At most {@code ranges} groups, as balanced as the prefixes allow.
+     */
+    public static List<Group> split(List<String> names, int subitems, int ranges, int minWidth) {
         int n = names.size();
         if (n <= subitems || n < 2 || ranges < 2) {
             return List.of();
         }
-        int groups = Math.min(ranges, n);
-        int base = n / groups;
-        int extra = n % groups;
-        List<int[]> bounds = new ArrayList<>();
-        int at = 0;
-        for (int g = 0; g < groups; g++) {
-            int size = base + (g < extra ? 1 : 0);
-            bounds.add(new int[] { at, at + size });
-            at += size;
+        int longest = 1;
+        for (String s : names) {
+            longest = Math.max(longest, s == null ? 0 : s.strip().codePointCount(0, s.strip().length()));
+        }
+        int width = Math.max(1, minWidth);
+        List<Integer> runs = runStarts(names, width);
+        while (runs.size() < Math.min(ranges, n) && width < longest) {
+            width++;
+            runs = runStarts(names, width);
+        }
+        if (runs.size() < 2) {
+            // identical names: nothing but the position can tell them apart
+            runs = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                runs.add(i);
+            }
+        }
+        int groups = Math.min(ranges, runs.size());
+        List<Integer> cuts = new ArrayList<>();   // index into runs where each group after the first starts
+        int prev = 0;
+        for (int g = 1; g < groups; g++) {
+            double ideal = (double) n * g / groups;
+            int best = -1;
+            for (int r = prev + 1; r <= runs.size() - (groups - g); r++) {
+                if (best < 0 || Math.abs(runs.get(r) - ideal) < Math.abs(runs.get(best) - ideal)) {
+                    best = r;
+                }
+            }
+            cuts.add(best);
+            prev = best;
         }
         List<Group> out = new ArrayList<>();
+        int startRun = 0;
         for (int g = 0; g < groups; g++) {
-            int[] b = bounds.get(g);
-            String first = names.get(b[0]);
-            String last = names.get(b[1] - 1);
-            String prevLast = g > 0 ? names.get(bounds.get(g - 1)[1] - 1) : null;
-            String nextFirst = g < groups - 1 ? names.get(bounds.get(g + 1)[0]) : null;
-            out.add(new Group(b[0], b[1], label(first, last, prevLast, nextFirst)));
+            int endRun = g < cuts.size() ? cuts.get(g) : runs.size();
+            int from = runs.get(startRun);
+            int to = endRun < runs.size() ? runs.get(endRun) : n;
+            out.add(new Group(from, to, label(names.get(from), names.get(to - 1), width), width));
+            startRun = endRun;
         }
         return out;
     }
 
-    /** The shortest prefixes that tell the range's first and last name apart from its neighbours. */
-    static String label(String first, String last, String prevLast, String nextFirst) {
-        String start = prefix(first, prevLast);
-        String end = prefix(last, nextFirst);
-        return start.equalsIgnoreCase(end) ? start : start + "-" + end;
+    /** The indexes where a new prefix of {@code width} characters starts. */
+    private static List<Integer> runStarts(List<String> names, int width) {
+        List<Integer> out = new ArrayList<>();
+        String last = null;
+        for (int i = 0; i < names.size(); i++) {
+            String h = head(names.get(i), width);
+            if (!h.equals(last)) {
+                out.add(i);
+                last = h;
+            }
+        }
+        return out;
     }
 
-    /** The shortest prefix of {@code name} that differs from the same-length prefix of {@code other}. */
-    private static String prefix(String name, String other) {
+    /** The first {@code width} characters of the first and of the last name, as one label ("AA-BC", or "AA"). */
+    static String label(String first, String last, int width) {
+        String start = head(first, width);
+        String end = head(last, width);
+        return start.equals(end) ? start : start + "-" + end;
+    }
+
+    private static String head(String name, int width) {
         String n = name == null ? "" : name.strip();
         if (n.isEmpty()) {
             return "#";
         }
-        if (other == null) {
-            return head(n, 1);
-        }
-        String o = other.strip().toLowerCase(Locale.ROOT);
-        String nl = n.toLowerCase(Locale.ROOT);
-        int k = 1;
-        while (k < n.length() && k <= o.length() && nl.regionMatches(0, o, 0, k)) {
-            k++;
-        }
-        return head(n, Math.min(k, n.length()));
-    }
-
-    private static String head(String s, int codePoints) {
-        int end = s.offsetByCodePoints(0, Math.min(codePoints, s.codePointCount(0, s.length())));
-        String h = s.substring(0, end);
-        return h.substring(0, h.offsetByCodePoints(0, 1)).toUpperCase(Locale.ROOT)
-                + h.substring(h.offsetByCodePoints(0, 1));
+        int end = n.offsetByCodePoints(0, Math.min(width, n.codePointCount(0, n.length())));
+        return n.substring(0, end).toUpperCase(Locale.ROOT);
     }
 }

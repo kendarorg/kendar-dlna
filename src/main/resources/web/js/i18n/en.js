@@ -309,6 +309,9 @@ export const en = {
   'folders.random': 'Random from here',
   'folders.manage': 'Manage',
   'folders.empty': 'This folder is empty.',
+  'folders.browse': 'Browsing',
+  'folders.browse.ranges': 'Ranges',
+  'folders.browse.scroll': 'Infinite scrolling',
 
   'group.allTracks': 'All tracks',
 

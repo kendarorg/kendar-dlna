@@ -38,15 +38,28 @@ class RangesTest {
     }
 
     @Test
-    void labelsUseTheShortestDistinguishingPrefixes() {
-        List<String> n = new ArrayList<>(List.of("Aardvark", "Abba", "Abbey", "Acdc", "Bach", "Bad", "Beatles",
-                "Beck", "Bee Gees", "Cher", "Chic", "Chopin"));
-        List<Ranges.Group> groups = Ranges.split(n, 4, 4);
-        assertThat(groups).hasSize(4);
-        assertThat(groups).extracting(Ranges.Group::label).doesNotHaveDuplicates();
-        assertThat(groups.get(0).label()).startsWith("A");
-        assertThat(groups.get(0).label()).isEqualTo("A-Ab");
-        assertThat(groups.get(3).label()).isEqualTo("C");
+    void rangesCutBetweenLettersAndNeverShareOne() {
+        List<String> n = new ArrayList<>();
+        for (String l : List.of("A", "B", "C", "D", "E", "F")) {
+            for (int i = 0; i < 3; i++) {
+                n.add(l + "x" + i);
+            }
+        }
+        List<Ranges.Group> groups = Ranges.split(n, 4, 3);
+        assertThat(groups).extracting(Ranges.Group::label).containsExactly("A-B", "C-D", "E-F");
+    }
+
+    @Test
+    void aLetterThatIsTooBigIsSplitOnTheNextCharacter() {
+        List<String> n = new ArrayList<>();
+        for (String c : List.of("0", "1", "2", "3", "4", "5")) {
+            n.add("A" + c);
+        }
+        n.add("B1");
+        List<Ranges.Group> top = Ranges.split(n, 4, 2);
+        assertThat(top).extracting(Ranges.Group::label).containsExactly("A", "B");
+        List<Ranges.Group> inner = Ranges.split(n.subList(top.get(0).from(), top.get(0).to()), 4, 2, 2);
+        assertThat(inner).extracting(Ranges.Group::label).containsExactly("A0-A2", "A3-A5");
     }
 
     @Test

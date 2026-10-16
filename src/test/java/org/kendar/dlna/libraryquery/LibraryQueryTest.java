@@ -86,6 +86,35 @@ class LibraryQueryTest {
     }
 
     @Test
+    void aFolderCanBeListedThroughItsLetterRanges() {
+        views.withRangeDefaults(1, 2);
+
+        Map<String, Object> flat = query.folder(lena, q("path", "main/Album"));
+        assertThat(flat.get("layout")).isEqualTo("flat");
+
+        Map<String, Object> top = query.folder(lena, q("path", "main/Album", "layout", "ranges"));
+        assertThat(top.get("layout")).isEqualTo("ranges");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> children = (List<Map<String, Object>>) top.get("children");
+        assertThat(children).isNotEmpty().allSatisfy(c -> assertThat(c.get("type")).isEqualTo("range"));
+        assertThat((int) top.get("total")).isLessThanOrEqualTo(2);
+
+        String rangeId = (String) children.get(0).get("id");
+        Map<String, Object> inside = query.folder(lena, q("path", "main/Album", "range", rangeId));
+        assertThat(inside.get("range").toString()).contains(rangeId);
+        assertThat(inside.get("children").toString()).contains("type=range");   // still over subitems: split again
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> deeper = (List<Map<String, Object>>) inside.get("children");
+        Map<String, Object> leaf = query.folder(lena, q("path", "main/Album", "range", (String) deeper.get(0).get("id")));
+        assertThat(leaf.get("children").toString()).contains("type=track");
+        assertThat(leaf.get("range").toString()).contains("trail");
+
+        assertThatThrownBy(() -> query.folder(lena, q("path", "main/Album", "range", "g.nope.t9")))
+                .isInstanceOf(QueryException.class);
+        assertNoSecrets("ranges", top);
+    }
+
+    @Test
     void navigationsAreBrowsableOverTheCallersRootsOnly() {
         views.withNavigations(new org.kendar.dlna.catalog.NavigationRegistry(List.of(
                 new org.kendar.dlna.catalog.Navigation("Artists", null, null, List.of("artist", "album", "title"))),

@@ -39,6 +39,7 @@ import org.kendar.dlna.search.SearchScope;
 import org.kendar.dlna.shared.Normalizer;
 import org.kendar.dlna.shared.RootRef;
 import org.kendar.dlna.shuffle.Shuffle;
+import org.kendar.dlna.views.FolderRanges;
 import org.kendar.dlna.views.ViewNode;
 import org.kendar.dlna.views.Views;
 
@@ -205,6 +206,41 @@ public final class LibraryQuery {
         return has ? BASE + "/artwork?kind=folder&path=" + enc(f.ref().qualified()) : null;
     }
 
+    private Object childItem(Snapshot snap, Child c, Set<String> formats) {
+        return switch (c) {
+            case Child.FolderChild fc -> folderRef(snap, fc.folder());
+            case Child.TrackChild tc -> obj("type", "track", "path", tc.track().ref().qualified(),
+                    "track", trackJson(snap, tc.track(), formats));
+        };
+    }
+
+    /** A letter range of a directory: label, how many songs lie below it and the art of the first one. */
+    private Map<String, Object> rangeItem(Snapshot snap, FolderRanges.Range r) {
+        int[] counts = new int[2];   // tracks, folders
+        Track[] first = new Track[1];
+        countRange(r, counts, first);
+        return obj("type", "range", "id", r.id(), "label", r.label(), "trackCount", counts[0], "folderCount", counts[1],
+                "art", first[0] == null ? null : trackArt(snap, first[0]));
+    }
+
+    private static void countRange(FolderRanges.Range r, int[] counts, Track[] first) {
+        for (FolderRanges.Entry e : r.entries()) {
+            switch (e) {
+                case FolderRanges.Range inner -> countRange(inner, counts, first);
+                case FolderRanges.Real real -> {
+                    if (real.child() instanceof Child.TrackChild tc) {
+                        counts[0]++;
+                        if (first[0] == null) {
+                            first[0] = tc.track();
+                        }
+                    } else {
+                        counts[1]++;
+                    }
+                }
+            }
+        }
+    }
+
     private Map<String, Object> folderRef(Snapshot snap, Folder f) {
         return obj("type", "folder", "path", f.ref().qualified(), "name", f.ref().name(), "displayName",
                 DisplayNames.folderTitle(f), "virtual", f.isVirtual(), "art", folderArt(snap, f));
@@ -277,7 +313,10 @@ public final class LibraryQuery {
         return m;
     }
 
-    /** Params: {@code path}, {@code offset}, {@code limit}, {@code formats}. */
+    /**
+     * Params: {@code path}, {@code offset}, {@code limit}, {@code formats}; {@code layout=ranges} lists the directory
+     * through its letter ranges (entries of type {@code range}), {@code range=<id>} the content of one range.
+     */
     public Map<String, Object> folder(User user, Map<String, String> q) {
         RootRef ref = authorized(user, required(q, "path"));
         Snapshot snap = catalog.get();
@@ -291,12 +330,35 @@ public final class LibraryQuery {
                 folders++;
             }
         }
+        // layout=ranges: the letter ranges of the directory (as on DLNA); range=<id> opens one of them
+        FolderRanges.Range current = null;
+        List<FolderRanges.Entry> entries = null;
+        String rangeId = q.get("range");
+        if ("ranges".equals(q.get("layout")) || (rangeId != null && !rangeId.isBlank())) {
+            FolderRanges.Layout layout = views.folderLayout(snap, f);
+            if (rangeId != null && !rangeId.isBlank()) {
+                current = layout.index().get(rangeId);
+                if (current == null) {
+                    throw QueryException.notFound("Unknown range: " + rangeId);
+                }
+                entries = current.entries();
+            } else {
+                entries = layout.top();
+            }
+        }
         List<Object> items = new ArrayList<>();
-        for (Child c : p.slice(kids)) {
-            switch (c) {
-                case Child.FolderChild fc -> items.add(folderRef(snap, fc.folder()));
-                case Child.TrackChild tc -> items.add(obj("type", "track", "path", tc.track().ref().qualified(),
-                        "track", trackJson(snap, tc.track(), formats)));
+        int listed = kids.size();
+        if (entries == null) {
+            for (Child c : p.slice(kids)) {
+                items.add(childItem(snap, c, formats));
+            }
+        } else {
+            listed = entries.size();
+            for (FolderRanges.Entry e : p.slice(entries)) {
+                switch (e) {
+                    case FolderRanges.Real r -> items.add(childItem(snap, r.child(), formats));
+                    case FolderRanges.Range r -> items.add(rangeItem(snap, r));
+                }
             }
         }
         AlbumInfo a = f.settings().album();
@@ -316,7 +378,17 @@ public final class LibraryQuery {
         m.put("art", folderArt(snap, f));
         m.put("trackCount", kids.size() - folders);
         m.put("folderCount", folders);
-        return pageOf(m, "children", kids.size(), p, items);
+        m.put("layout", entries == null ? "flat" : "ranges");
+        if (current != null) {
+            List<Object> trail = new ArrayList<>();
+            Map<String, FolderRanges.Range> index = views.folderLayout(snap, f).index();
+            for (FolderRanges.Range r = current; r != null; r = r.parentId() == null ? null : index.get(r.parentId())) {
+                trail.add(0, obj("id", r.id(), "label", r.label()));
+            }
+            m.put("range", obj("id", current.id(), "label", current.label(), "parent", current.parentId(),
+                    "trail", trail));
+        }
+        return pageOf(m, "children", listed, p, items);
     }
 
     // ---- library-wide albums / artists / genres / songs ----

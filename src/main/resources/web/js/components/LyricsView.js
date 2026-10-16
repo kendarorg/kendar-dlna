@@ -3,6 +3,15 @@ import { Api } from '../api.js';
 import { player } from '../player/index.js';
 import { activeLine, isSynced } from '../core/lyrics.js';
 
+/** The nearest ancestor that scrolls (the lyrics box, the dialog or the Lyrics tab). */
+function scrollParent(el) {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}
+
 export const LyricsView = {
   name: 'LyricsView',
   props: { track: { type: Object, required: true }, follow: { type: Boolean, default: true } },
@@ -23,7 +32,11 @@ export const LyricsView = {
       if (i < 0) return;
       this.$nextTick(() => {
         const el = this.$el && this.$el.querySelector ? this.$el.querySelector('.ly-line.on') : null;
-        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        const box = el ? scrollParent(el) : null;
+        if (!box) return;
+        // scroll only the lyrics box, never the page around it
+        const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+        box.scrollTo({ top: box.scrollTop + (r.top - b.top) - box.clientHeight / 2 + r.height / 2, behavior: 'smooth' });
       });
     }
   },

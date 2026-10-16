@@ -114,3 +114,11 @@ img.cover { width: 9rem; height: 9rem; object-fit: cover; border-radius: 8px; bo
 .switch2 input:focus-visible + .sw-track { outline: 2px solid var(--accent); outline-offset: 2px; }
 .switch2 .sw-label { color: var(--muted); }
 .switch2 .sw-label.on { color: var(--text); font-weight: 600; }
+
+/* lyrics candidates: pick one of the found lyrics (or none) from a ten-line preview */
+.candidates { border: 0; padding: 0; margin: .6rem 0; display: grid; gap: .5rem; }
+.candidates legend { font-weight: 600; margin-bottom: .3rem; }
+.candidate { display: block; cursor: pointer; }
+.candidate.chosen { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.candidate .preview { margin: .3rem 0 0 1.6rem; padding: 0; list-style: none; font-size: .9rem; color: var(--muted); }
+.candidate .preview li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

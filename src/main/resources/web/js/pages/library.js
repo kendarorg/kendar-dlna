@@ -7,6 +7,7 @@ import { Cover } from '../components/media.js';
 import { DirTree } from '../components/DirTree.js';
 import { RowMenu } from '../components/RowMenu.js';
 import { PaneResizer } from '../components/PaneResizer.js';
+import { SwitchToggle } from '../components/SwitchToggle.js';
 import { formatDuration, formatTotal, formatSize } from '../core/format.js';
 import { sectionsRoute } from '../core/list-json.js';
 import { folderRoute } from '../core/urls.js';
@@ -21,7 +22,7 @@ const prefs = createPrefs(storage(), 'kd.');
 
 export const LibraryPage = {
   name: 'LibraryPage',
-  components: { Icon, Cover, DirTree, RowMenu, PaneResizer },
+  components: { Icon, Cover, DirTree, RowMenu, PaneResizer, SwitchToggle },
   data() {
     return {
       tree: null, folder: null, busy: false, forceTags: false, error: '', info: '', loading: false, treeOpen: false,
@@ -225,10 +226,8 @@ export const LibraryPage = {
             </div>
           </header>
 
-          <div v-if="subfolders.length" class="row lib-viewswitch" role="group" :aria-label="$t('lib.view')">
-            <button type="button" :class="{ on: folderView === 'boxes' }" :aria-pressed="String(folderView === 'boxes')" @click="setFolderView('boxes')">{{ $t('lib.view.boxes') }}</button>
-            <button type="button" :class="{ on: folderView === 'list' }" :aria-pressed="String(folderView === 'list')" @click="setFolderView('list')">{{ $t('lib.view.list') }}</button>
-          </div>
+          <switch-toggle v-if="subfolders.length" :model-value="folderView === 'list'" :off-label="$t('lib.view.boxes')" :on-label="$t('lib.view.list')"
+                         @update:model-value="v => setFolderView(v ? 'list' : 'boxes')"></switch-toggle>
           <ul class="group-list lib-folderlist" v-if="subfolders.length && folderView === 'list'">
             <li v-for="f in subfolders" :key="f.path" class="group-row" @contextmenu.prevent="select(f.path)">
               <cover :art="f.hasFront ? artUrl(f.path, 'front') : null" size="small" :icon="f.virtual ? 'album' : 'folder'"></cover>

@@ -115,10 +115,10 @@ class LyricsTest {
     @Test
     void lrclibPrefersSyncedLyricsAndFallsBackToSearchOn404() throws Exception {
         List<String> urls = new ArrayList<>();
-        LrclibProvider.Http http = uri -> {
+        LyricsHttp.Get http = uri -> {
             urls.add(uri.toString());
             if (uri.getPath().endsWith("/get")) {
-                throw new LrclibProvider.NotFound("no");
+                throw new LyricsHttp.NotFound("no");
             }
             return "[{\"duration\":200,\"plainLyrics\":\"just text\"},"
                     + "{\"duration\":201,\"syncedLyrics\":\"[00:01.00]Synced\",\"plainLyrics\":\"Synced\"},"
@@ -145,6 +145,149 @@ class LyricsTest {
         assertThatThrownBy(() -> p.find(new LyricsProvider.Query("a", "b", null, 0))).isInstanceOf(IOException.class);
     }
 
+    @Test
+    void lrclibTriesAFreeTextSearchAndKeepsGoingWhenAStepFails() throws Exception {
+        List<String> urls = new ArrayList<>();
+        LyricsHttp.Get http = uri -> {
+            urls.add(uri.toString());
+            if (uri.getPath().endsWith("/get")) {
+                throw new IOException("lyrics service answered 503");
+            }
+            if (uri.getQuery().startsWith("track_name=")) {
+                return "[]";
+            }
+            return "[{\"duration\":200,\"syncedLyrics\":\"[00:01.00]Found by q\"}]";
+        };
+        List<Lyrics> found = new LrclibProvider("https://x.example/api", http)
+                .find(new LyricsProvider.Query("Ann Lee", "A Song", null, 200));
+
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).lines().get(0).text()).isEqualTo("Found by q");
+        assertThat(urls).hasSize(3);
+        assertThat(urls.get(2)).isEqualTo("https://x.example/api/search?q=Ann+Lee+A+Song");
+    }
+
+    @Test
+    void lyricsOvhGivesPlainLyricsFromArtistAndTitle() throws Exception {
+        List<String> urls = new ArrayList<>();
+        LyricsOvhProvider p = new LyricsOvhProvider("https://o.example/v1/", uri -> {
+            urls.add(uri.toString());
+            return "{\"lyrics\":\"Paroles de la chanson A Song par Ann Lee\\r\\nLine one\\nLine two\"}";
+        });
+
+        List<Lyrics> found = p.find(new LyricsProvider.Query("Ann Lee", "A Song", null, 0));
+
+        assertThat(urls).containsExactly("https://o.example/v1/Ann%20Lee/A%20Song");
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).synced()).isFalse();
+        assertThat(found.get(0).lines()).extracting(Lyrics.Line::text).containsExactly("Line one", "Line two");
+        assertThat(p.find(new LyricsProvider.Query(" ", "A Song", null, 0))).isEmpty();
+        assertThat(new LyricsOvhProvider(null, (URI u) -> {
+            throw new LyricsHttp.NotFound("no");
+        }).find(new LyricsProvider.Query("a", "b", null, 0))).isEmpty();
+    }
+
+    @Test
+    void aChainAsksEveryoneAtOnceAndReturnsEverythingSyncedFirstWithoutDuplicates() throws Exception {
+        Lyrics synced = LrcParser.parse("[00:01.00]Synced", "a");
+        Lyrics plain = LrcParser.parse("Plain", "b");
+        List<LyricsProvider.Query> askedB = new ArrayList<>();
+        LyricsProvider failing = new LyricsProvider() {
+            public String id() {
+                return "down";
+            }
+
+            public List<Lyrics> find(Query q) throws IOException {
+                throw new IOException("lyrics service answered 503");
+            }
+        };
+        LyricsProvider.Query q = new LyricsProvider.Query("a", "b", null, 0);
+
+        assertThat(new ChainProvider(List.of(fake(List.of(synced), new ArrayList<>()), fake(List.of(plain), askedB)))
+                .find(q)).containsExactly(synced, plain);   // synced first, the plain one is offered too
+        assertThat(askedB).hasSize(1);
+        askedB.clear();
+        Lyrics samePlain = LrcParser.parse("plain", "c");
+        assertThat(new ChainProvider(List.of(fake(List.of(plain), new ArrayList<>()), fake(List.of(samePlain), askedB)))
+                .find(q)).containsExactly(plain);   // the same text from two providers only once
+
+        LyricsProvider slow = new LyricsProvider() {
+            public String id() {
+                return "slow";
+            }
+
+            public List<Lyrics> find(Query query) throws IOException {
+                try {
+                    Thread.sleep(400);
+                } catch (InterruptedException e) {
+                    throw new IOException(e);
+                }
+                return List.of(LrcParser.parse("slow " + Thread.currentThread().threadId(), "slow"));
+            }
+        };
+        long start = System.nanoTime();
+        assertThat(new ChainProvider(List.of(slow, slow, slow)).find(q)).hasSize(3);
+        assertThat((System.nanoTime() - start) / 1_000_000).as("asked in parallel").isLessThan(1000);
+        askedB.clear();
+        assertThat(new ChainProvider(List.of(failing, fake(List.of(plain), askedB))).find(q)).containsExactly(plain);
+        assertThat(askedB).hasSize(1);
+        assertThatThrownBy(() -> new ChainProvider(List.of(failing, failing)).find(q)).isInstanceOf(IOException.class)
+                .hasMessageContaining("down").hasMessageContaining("503");
+        // one provider found nothing but another could not answer: that is a failure to retry, not "not found"
+        assertThatThrownBy(() -> new ChainProvider(List.of(failing, fake(List.of(), new ArrayList<>()))).find(q))
+                .isInstanceOf(IOException.class);
+        assertThat(new ChainProvider(List.of(fake(List.of(), new ArrayList<>()), fake(List.of(), new ArrayList<>())))
+                .find(q)).isEmpty();
+        assertThat(LyricsProviders.ids(" LRCLIB, lyrics.ovh ,lrclib")).containsExactly("lrclib", "lyrics.ovh");
+        assertThat(LyricsProviders.create("lrclib,lyrics.ovh", java.util.Map.of(), java.time.Duration.ofSeconds(1), "t")
+                .id()).isEqualTo("lrclib,lyrics.ovh");
+    }
+
+    @Test
+    void lrcCxReturnsTheSyncedLrcTextOrNothingOn404() throws Exception {
+        List<String> urls = new ArrayList<>();
+        LrcCxProvider p = new LrcCxProvider("https://c.example/", uri -> {
+            urls.add(uri.toString());
+            return "[Verse]\n[00:04.89]Yesterday\n[00:08.01]All my troubles";
+        });
+
+        List<Lyrics> found = p.find(new LyricsProvider.Query("The Beatles", "Yesterday", null, 0));
+
+        assertThat(urls).containsExactly("https://c.example/lyrics?title=Yesterday&artist=The+Beatles");
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).synced()).isTrue();
+        assertThat(found.get(0).lines()).extracting(Lyrics.Line::text).containsExactly("Yesterday", "All my troubles");
+        assertThat(new LrcCxProvider(null, (URI u) -> {
+            throw new LyricsHttp.NotFound("no");
+        }).find(new LyricsProvider.Query("a", "b", null, 0))).isEmpty();
+    }
+
+    @Test
+    void neteaseKeepsTheHitsOfTheSameTitleAndLengthAndTakesTheFirstWithLyrics() throws Exception {
+        List<String> urls = new ArrayList<>();
+        LyricsHttp.Get http = uri -> {
+            urls.add(uri.toString());
+            if (uri.getPath().endsWith("/search/get")) {
+                return "{\"result\":{\"songs\":["
+                        + "{\"id\":1,\"name\":\"Something else\",\"duration\":200000},"
+                        + "{\"id\":2,\"name\":\"A Song (Live)\",\"duration\":400000},"
+                        + "{\"id\":3,\"name\":\"A Song\",\"duration\":201000},"
+                        + "{\"id\":4,\"name\":\"A Song\",\"duration\":199000}]}}";
+            }
+            return uri.getQuery().contains("id=3") ? "{\"lrc\":{\"lyric\":\"\"}}"
+                    : "{\"lrc\":{\"lyric\":\"[00:01.00]Ciao\"}}";
+        };
+
+        List<Lyrics> found = new NeteaseProvider("https://n.example/api", http)
+                .find(new LyricsProvider.Query("Ann", "A Song", null, 200));
+
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).lines().get(0).text()).isEqualTo("Ciao");
+        assertThat(urls).hasSize(3);   // one search, the lyrics of hit 3 (empty) and of hit 4
+        assertThat(urls.get(1)).endsWith("id=3");
+        assertThat(urls.get(2)).endsWith("id=4");
+    }
+
     // ---- the service ----
 
     private static LyricsProvider fake(List<Lyrics> answer, List<LyricsProvider.Query> asked) {
@@ -162,6 +305,66 @@ class LyricsTest {
         };
     }
 
+
+    @Test
+    void aLookupShowsEachProvidersLyricsAsSoonAsTheyArriveAndOnlyAppends() throws Exception {
+        LibraryFixture lib = new LibraryFixture(tmp);
+        Lyrics fastLyrics = LrcParser.parse("Fast one\nFast two", "fast");
+        Lyrics slowLyrics = LrcParser.parse("[00:01.00]Slow", "slow");
+        LyricsProvider fast = namedProvider("fast", 0, fastLyrics, null);
+        LyricsProvider slow = namedProvider("slow", 600, slowLyrics, null);
+        LyricsProvider broken = namedProvider("broken", 0, null, "lyrics service answered 503");
+        LyricsService svc = new LyricsService(lib.catalog::current, lib.files,
+                new ChainProvider(List.of(slow, fast, broken)), 0);
+
+        LyricsService.Lookup job = svc.startLookup(RootRef.parse("main/Album/03 three.mp3"));
+
+        // the fast and the broken providers answer first; the slow one is still pending
+        LyricsService.LookupView early = job.view(0);
+        for (int i = 0; i < 100 && early.candidates().isEmpty(); i++) {
+            Thread.sleep(20);
+            early = job.view(0);
+        }
+        assertThat(early.running()).isTrue();
+        assertThat(early.candidates()).containsExactly(fastLyrics);
+        assertThat(early.providers()).extracting(LyricsService.ProviderState::id).containsExactly("slow", "fast", "broken");
+        assertThat(early.providers()).extracting(LyricsService.ProviderState::state)
+                .containsExactly("pending", "done", "failed");
+
+        LyricsService.LookupView late = job.view(0);
+        for (int i = 0; i < 200 && late.running(); i++) {
+            Thread.sleep(20);
+            late = job.view(0);
+        }
+        assertThat(late.running()).isFalse();
+        assertThat(late.candidates()).containsExactly(fastLyrics, slowLyrics);   // appended: index 0 did not move
+        assertThat(job.view(1).candidates()).containsExactly(slowLyrics);        // only what is new since the first one
+        assertThat(job.view(2).candidates()).isEmpty();
+        assertThat(svc.lookupJob(late.id())).isPresent();
+        assertThat(svc.lookupJob("nope")).isEmpty();
+    }
+
+    private static LyricsProvider namedProvider(String id, long delayMillis, Lyrics answer, String failure) {
+        return new LyricsProvider() {
+            @Override
+            public String id() {
+                return id;
+            }
+
+            @Override
+            public List<Lyrics> find(Query q) throws IOException {
+                try {
+                    Thread.sleep(delayMillis);
+                } catch (InterruptedException e) {
+                    throw new IOException(e);
+                }
+                if (failure != null) {
+                    throw new IOException(failure);
+                }
+                return List.of(answer);
+            }
+        };
+    }
     @Test
     void lookupSavesASidecarAndNothingElseWithoutAProvider() throws IOException {
         LibraryFixture lib = new LibraryFixture(tmp);

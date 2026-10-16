@@ -6,7 +6,16 @@
 import { Api } from '../api.js';
 
 function previewOf(lyrics) {
-  return lyrics.lines.map(l => l.text).filter(t => t && t.trim()).slice(0, 6).join(' / ');
+  return lyrics.lines.map(l => l.text).filter(t => t && t.trim()).slice(0, 2).join(' / ');
+}
+
+/** The first ten lines that have something in them (empty and white lines left out). */
+export function previewLines(lyrics) {
+  return lyrics.lines.map(l => (l.text || '').trim()).filter(t => t).slice(0, 10);
+}
+
+function countLines(lyrics) {
+  return lyrics.lines.filter(l => l.text && l.text.trim()).length;
 }
 
 function toText(lyrics) {
@@ -25,7 +34,7 @@ export const LyricsPage = {
   name: 'LyricsPage',
   data() {
     return {
-      provider: null, existing: null, candidates: [], text: '', looked: false,
+      provider: null, existing: null, candidates: [], chosen: null, text: '', looked: false, looking: false, providers: [],
       job: null, selected: [], replaceExisting: false, error: '', info: '', busy: false, timer: null
     };
   },
@@ -40,9 +49,9 @@ export const LyricsPage = {
     if (this.track) await this.loadExisting();
     else await this.refreshJob();
   },
-  beforeUnmount() { clearTimeout(this.timer); },
+  beforeUnmount() { clearTimeout(this.timer); clearTimeout(this.lookupTimer); },
   methods: {
-    previewOf,
+    previewOf, previewLines, countLines,
     async loadExisting() {
       try {
         const r = await Api.lyrics(this.track);
@@ -50,16 +59,44 @@ export const LyricsPage = {
         this.text = toText(r.lyrics);
       } catch (e) { this.error = e.message; }
     },
+    /** Starts the lookup; what each provider finds is shown the moment it arrives, so one can be chosen at once. */
     async lookup() {
-      this.busy = true; this.error = ''; this.info = '';
+      clearTimeout(this.lookupTimer);
+      this.busy = true; this.looking = true; this.error = ''; this.info = '';
+      this.candidates = []; this.providers = []; this.chosen = null; this.looked = false;   // nothing is taken until chosen
       try {
-        const r = await Api.lyricsLookup(this.track);
-        this.candidates = r.candidates;
-        this.looked = true;
-        if (r.candidates.length && !this.text) this.text = toText(r.candidates[0]);
-      } catch (e) { this.error = e.message; } finally { this.busy = false; }
+        const r = await Api.lyricsLookupStart(this.track);
+        this.absorb(r);
+        this.pollLookup(r.id);
+      } catch (e) { this.error = e.message; this.looking = false; this.busy = false; }
     },
-    use(c) { this.text = toText(c); this.info = ''; },
+    /** New candidates are only appended: the index of the one being read or chosen never moves. */
+    absorb(r) {
+      this.providers = r.providers;
+      r.candidates.forEach(c => this.candidates.push(c));
+      if (r.error) this.error = r.error;
+    },
+    pollLookup(id) {
+      this.lookupTimer = setTimeout(async () => {
+        try {
+          const r = await Api.lyricsLookupJob(id, this.candidates.length);
+          this.absorb(r);
+          if (r.running) { this.pollLookup(id); return; }
+        } catch (e) { this.error = e.message; }
+        this.looking = false; this.busy = false; this.looked = true;
+      }, 400);
+    },
+    providerLabel(p) {
+      if (p.state === 'pending') return p.id + ' …';
+      if (p.state === 'failed') return p.id + ' failed';
+      return p.id + ': ' + (p.count ? p.count + ' found' : 'nothing');
+    },
+    /** One candidate (its index) or none (-1): the editor below holds what would be saved. */
+    choose(i) {
+      this.chosen = i;
+      this.info = '';
+      this.text = i >= 0 ? toText(this.candidates[i]) : toText(this.existing);
+    },
     async save() {
       this.busy = true; this.error = ''; this.info = '';
       try {
@@ -116,15 +153,24 @@ export const LyricsPage = {
           <button type="button" class="primary" :disabled="busy || provider === null" @click="lookup">Look up at {{ provider || 'the provider' }}</button>
           <span v-if="existing" class="muted">This track has {{ existing.synced ? 'synced' : 'plain' }} lyrics ({{ existing.source }}).</span>
         </div>
+        <p v-if="providers.length" class="small provider-states">
+          <span v-for="p in providers" :key="p.id" class="badge" :class="p.state === 'failed' ? 'bad' : (p.count ? 'ok' : '')"
+                :title="p.error || ''">{{ providerLabel(p) }}</span></p>
         <p v-if="looked && !candidates.length" class="muted">Nothing found.</p>
-        <ul class="plain">
-          <li v-for="(c, i) in candidates" :key="i" class="card">
-            <div class="row"><strong>Candidate {{ i + 1 }}</strong>
+        <fieldset v-if="candidates.length" class="candidates">
+          <legend>Found {{ candidates.length }}<span v-if="looking"> so far, still looking&hellip;</span>: choose one, or none</legend>
+          <label v-for="(c, i) in candidates" :key="i" class="card candidate" :class="{ chosen: chosen === i }">
+            <div class="row"><input type="radio" name="candidate" :value="i" :checked="chosen === i" @change="choose(i)">
+              <strong>{{ c.source }}</strong>
               <span class="badge" :class="c.synced ? 'ok' : ''">{{ c.synced ? 'synced' : 'plain' }}</span>
-              <span class="grow"></span><button type="button" @click="use(c)">Use this</button></div>
-            <p class="muted small">{{ previewOf(c) }}</p>
-          </li>
-        </ul>
+              <span class="muted small">{{ countLines(c) }} lines</span></div>
+            <ol class="plain preview"><li v-for="(t, j) in previewLines(c)" :key="j">{{ t }}</li></ol>
+            <p v-if="countLines(c) > 10" class="muted small">&hellip;</p>
+          </label>
+          <label class="card candidate" :class="{ chosen: chosen === -1 }"><div class="row">
+            <input type="radio" name="candidate" :value="-1" :checked="chosen === -1" @change="choose(-1)">
+            <strong>None of these</strong></div></label>
+        </fieldset>
         <label class="stack">Lyrics (time tags like <code>[01:23.45]</code> make them synced)
           <textarea v-model="text" rows="18" spellcheck="false" aria-label="Lyrics"></textarea></label>
         <div class="row">

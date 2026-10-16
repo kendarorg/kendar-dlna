@@ -202,7 +202,7 @@ public final class Main {
         org.kendar.dlna.lyrics.LyricsProvider lyricsProvider = null;
         if (config.lyrics().enabled()) {
             lyricsProvider = org.kendar.dlna.lyrics.LyricsProviders.create(config.lyrics().provider(),
-                    config.lyrics().providers().get(config.lyrics().provider()),
+                    config.lyrics().providers(),
                     Duration.ofSeconds(config.lyrics().timeoutSeconds()),
                     "Kendar-DLNA/" + (version == null ? "dev" : version));
             LOG.info("Lyrics lookup enabled with provider '" + config.lyrics().provider() + "' (admin action only)");

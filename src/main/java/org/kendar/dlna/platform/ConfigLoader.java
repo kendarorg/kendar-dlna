@@ -141,9 +141,13 @@ public final class ConfigLoader {
             throw new ConfigException("views.ranges must be at least 2");
         }
         validateNavigations(cfg);
-        if (cfg.lyrics().enabled() && !org.kendar.dlna.lyrics.LyricsProviders.KNOWN.contains(cfg.lyrics().provider())) {
-            throw new ConfigException("lyrics.provider must be none or one of " + org.kendar.dlna.lyrics.LyricsProviders.KNOWN
-                    + ", got " + cfg.lyrics().provider());
+        if (cfg.lyrics().enabled()) {
+            var ids = org.kendar.dlna.lyrics.LyricsProviders.ids(cfg.lyrics().provider());
+            if (ids.isEmpty() || !org.kendar.dlna.lyrics.LyricsProviders.KNOWN.containsAll(ids)) {
+                throw new ConfigException("lyrics.provider must be none, one of "
+                        + org.kendar.dlna.lyrics.LyricsProviders.KNOWN + " or a comma separated list of them (tried in"
+                        + " order), got " + cfg.lyrics().provider());
+            }
         }
         if (cfg.lyrics().minIntervalMillis() < 0 || cfg.lyrics().timeoutSeconds() < 1) {
             throw new ConfigException("lyrics.minIntervalMillis must be >= 0 and lyrics.timeoutSeconds >= 1");

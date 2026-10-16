@@ -113,6 +113,103 @@ public final class LyricsService {
         }
     }
 
+    // ---- one track, as the answers arrive ----
+
+    /** What one provider has said so far: {@code pending}, {@code done} (with how many it found) or {@code failed}. */
+    public record ProviderState(String id, String state, int count, String error) {
+    }
+
+    /** What a lookup has to show now: the providers' states and the candidates that arrived after the first {@code after}. */
+    public record LookupView(String id, String path, boolean running, List<ProviderState> providers,
+            List<Lyrics> candidates, int total, String error) {
+    }
+
+    /** A lookup running in the background: candidates are only ever appended, so an index never moves. */
+    public static final class Lookup {
+        private final String id;
+        private final String path;
+        private final Map<String, ProviderState> states = new LinkedHashMap<>();
+        private final List<Lyrics> candidates = new ArrayList<>();
+        private final java.util.Set<String> seen = new java.util.HashSet<>();
+        private boolean running = true;
+        private String error;
+
+        Lookup(String id, String path, List<String> providerIds) {
+            this.id = id;
+            this.path = path;
+            providerIds.forEach(p -> states.put(p, new ProviderState(p, "pending", 0, null)));
+        }
+
+        synchronized void answered(String provider, List<Lyrics> found, String err) {
+            int added = 0;
+            for (Lyrics l : found) {
+                if (seen.add(l.text().strip().toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+", " "))) {
+                    candidates.add(l);
+                    added++;
+                }
+            }
+            states.put(provider, new ProviderState(provider, err == null ? "done" : "failed", added, err));
+        }
+
+        synchronized void finished(String err) {
+            running = false;
+            error = err;
+        }
+
+        public synchronized LookupView view(int after) {
+            int from = Math.max(0, Math.min(after, candidates.size()));
+            return new LookupView(id, path, running, List.copyOf(states.values()),
+                    List.copyOf(candidates.subList(from, candidates.size())), candidates.size(), error);
+        }
+    }
+
+    private final Map<String, Lookup> lookups = new LinkedHashMap<>() {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Lookup> eldest) {
+            return size() > 20;
+        }
+    };
+
+    /**
+     * Starts asking the provider(s) for a track in the background and returns at once; {@link Lookup#view} shows what
+     * has arrived, provider by provider.
+     */
+    public Lookup startLookup(RootRef ref) {
+        if (provider == null) {
+            throw new CurationException(CurationException.INVALID,
+                    "No lyrics provider is configured (lyrics.provider in config.json)");
+        }
+        Track t = track(ref);
+        LyricsProvider.Query query = query(t);
+        Lookup lookup = new Lookup(java.util.UUID.randomUUID().toString(), ref.qualified(), provider.ids());
+        synchronized (lookups) {
+            lookups.put(lookup.id, lookup);
+        }
+        Thread.ofVirtual().name("lyrics-lookup").start(() -> {
+            String err = null;
+            try {
+                pause();
+                provider.find(query, lookup::answered);
+            } catch (IOException e) {
+                err = "The lyrics service did not answer: " + e.getMessage();
+            } catch (RuntimeException e) {
+                LOG.warning("Lyrics lookup failed: " + e);
+                err = "The lyrics lookup failed: " + e.getMessage();
+            } finally {
+                lookup.finished(err);
+            }
+        });
+        return lookup;
+    }
+
+    public Optional<Lookup> lookupJob(String id) {
+        synchronized (lookups) {
+            return Optional.ofNullable(lookups.get(id));
+        }
+    }
+
     /** Writes the lyrics next to the audio file: {@code name.lrc} when synced, else {@code name.txt}. */
     public String save(RootRef ref, Lyrics lyrics) {
         Track t = track(ref);

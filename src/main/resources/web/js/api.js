@@ -132,6 +132,10 @@ export const Api = {
   lyrics(path) { return this.library('/lyrics', { path: path }); },
   lyricsStatus() { return this.get('/admin/lyrics/status'); },
   lyricsLookup(path) { return this.post('/admin/lyrics/lookup', { path: path }); },
+  /** Starts a lookup in the background; the answer carries its id (see lyricsLookupJob). */
+  lyricsLookupStart(path) { return this.post('/admin/lyrics/lookup/start', { path: path }); },
+  /** The state of each provider and the candidates that arrived after the first `after`. */
+  lyricsLookupJob(id, after) { return this.get('/admin/lyrics/lookup/job?' + this.q({ id: id, after: after })); },
   lyricsSave(path, text) { return this.post('/admin/lyrics/save', { path: path, text: text }); },
   lyricsFolderStart(path, replaceExisting) { return this.post('/admin/lyrics/folder/start', { path: path, replaceExisting: !!replaceExisting }); },
   lyricsFolderJob() { return this.get('/admin/lyrics/folder/job'); },

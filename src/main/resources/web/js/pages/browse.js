@@ -7,6 +7,7 @@ import { playList, groupSubject, openMenu } from '../actions.js';
 import { TrackList, GroupGrid, InfiniteScroll } from '../components/lists.js';
 import { Cover } from '../components/media.js';
 import { Icon } from '../components/icons.js';
+import { SwitchToggle } from '../components/SwitchToggle.js';
 import { createPager } from '../core/pager.js';
 import { sortItems } from '../core/list.js';
 import { formatTotal } from '../core/format.js';
@@ -27,21 +28,6 @@ function storedLayout() {
 function storedBrowse() {
   try { return localStorage.getItem('kd.folderBrowse') === 'scroll' ? 'scroll' : 'ranges'; } catch (e) { return 'ranges'; }
 }
-
-/** A two-state switch with a label on each side; `modelValue` true = the right-hand state. */
-const SwitchToggle = {
-  name: 'SwitchToggle',
-  props: { modelValue: { type: Boolean, required: true }, offLabel: { type: String, required: true },
-    onLabel: { type: String, required: true } },
-  emits: ['update:modelValue'],
-  template: `
-    <label class="switch2">
-      <span class="sw-label" :class="{ on: !modelValue }">{{ offLabel }}</span>
-      <input type="checkbox" role="switch" :checked="modelValue" @change="$emit('update:modelValue', $event.target.checked)">
-      <span class="sw-track" aria-hidden="true"></span>
-      <span class="sw-label" :class="{ on: modelValue }">{{ onLabel }}</span>
-    </label>`
-};
 
 /** The Ranges / Infinite scrolling switch (one preference for folders and navigations). */
 const BrowseSwitch = {

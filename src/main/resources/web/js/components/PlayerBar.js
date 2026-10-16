@@ -141,7 +141,7 @@ export const FullPlayer = {
     track() { return this.entry ? this.entry.track : null; },
     upcoming() {
       const q = this.player.state.queue;
-      return q.items.slice(q.index + 1, q.index + 4);
+      return q.items.slice(q.index + 1, q.index + 4).map((e, i) => ({ entry: e, at: q.index + 1 + i }));
     }
   },
   watch: {
@@ -176,16 +176,17 @@ export const FullPlayer = {
         <button type="button" class="icon-btn" :aria-label="$t('queue.title')" @click="ui.queueOpen = !ui.queueOpen; ui.fullscreen = false"><icon name="queue"></icon></button>
         <button type="button" class="icon-btn" :aria-label="$t('action.more')" aria-haspopup="menu" @click.stop="menu($event)"><icon name="more"></icon></button>
       </header>
-      <div v-if="tab === 'playing'" class="fp-body">
+      <div v-if="tab === 'playing'" class="fp-body fp-main">
         <cover class="fp-art" :art="track.art" size="large"></cover>
         <h1 class="fp-title">{{ track.title || track.name }}</h1>
         <p class="fp-sub">{{ track.artist }}<span v-if="track.album"> · {{ track.album }}</span></p>
         <seek-bar></seek-bar>
         <player-controls class="fp-controls"></player-controls>
         <speed-control class="fp-speed"></speed-control>
+        <div class="fp-lyricsbox"><lyrics-view :track="track"></lyrics-view></div>
         <div v-if="upcoming.length" class="fp-next">
           <h2>{{ $t('player.upNext') }}</h2>
-          <ol><li v-for="e in upcoming" :key="e.id">{{ e.track.title || e.track.name }}<span class="muted"> – {{ e.track.artist }}</span></li></ol>
+          <ol><li v-for="u in upcoming" :key="u.entry.id"><button type="button" class="link-btn" @click="player.jump(u.at)">{{ u.entry.track.title || u.entry.track.name }}<span class="muted"> – {{ u.entry.track.artist }}</span></button></li></ol>
         </div>
       </div>
       <div v-else-if="tab === 'lyrics'" class="fp-body fp-lyrics">

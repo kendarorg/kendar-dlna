@@ -68,7 +68,7 @@ final class LyricsResources {
         }
         return switch (seg.get(0)) {
             case "status" -> req.isRead() ? ApiResponse.ok(Dto.obj("provider", service().providerId())) : null;
-            case "lookup" -> req.method().equals("POST") ? lookup(req) : null;
+            case "lookup" -> seg.size() == 2 ? lookupJob(req, seg.get(1)) : req.method().equals("POST") ? lookup(req) : null;
             case "save" -> req.method().equals("POST") ? save(req) : null;
             case "folder" -> seg.size() == 2 ? folder(req, seg.get(1)) : null;
             default -> null;
@@ -82,6 +82,40 @@ final class LyricsResources {
         var local = service().local(ref);
         return ApiResponse.ok(Dto.obj("path", ref.qualified(), "candidates", candidates,
                 "existing", local.map(LyricsResources::body).orElse(null)));
+    }
+
+    /**
+     * {@code POST lookup/start {path}} starts a lookup in the background (202, with its id); {@code GET lookup/job?id=&after=N}
+     * answers with the state of each provider and the candidates that arrived after the first N (they are only ever
+     * appended, so the indexes stay put while the person chooses).
+     */
+    private ApiResponse lookupJob(ApiRequest req, String action) {
+        if (action.equals("start") && req.method().equals("POST")) {
+            var job = service().startLookup(ref(req.json().path("path").asText("")));
+            return ApiResponse.json(202, lookupBody(job.view(0), 0));
+        }
+        if (action.equals("job") && req.isRead()) {
+            var job = service().lookupJob(req.required("id")).orElseThrow(
+                    () -> new ApiException(404, "not_found", "Unknown lyrics lookup"));
+            int after;
+            try {
+                after = Integer.parseInt(req.query().getOrDefault("after", "0"));
+            } catch (NumberFormatException e) {
+                throw new ApiException(400, "bad_request", "after must be a number");
+            }
+            return ApiResponse.ok(lookupBody(job.view(after), after));
+        }
+        return null;
+    }
+
+    private static Map<String, Object> lookupBody(LyricsService.LookupView v, int after) {
+        List<Object> candidates = new ArrayList<>();
+        v.candidates().forEach(l -> candidates.add(body(l)));
+        List<Object> providers = new ArrayList<>();
+        v.providers().forEach(p -> providers.add(Dto.obj("id", p.id(), "state", p.state(), "count", p.count(),
+                "error", p.error())));
+        return Dto.obj("id", v.id(), "path", v.path(), "running", v.running(), "providers", providers, "after", after,
+                "candidates", candidates, "total", v.total(), "error", v.error());
     }
 
     /** Body {@code {path, text}}: LRC (time tags make it synced) or plain text; written next to the audio file. */

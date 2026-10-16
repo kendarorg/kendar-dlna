@@ -253,11 +253,16 @@ Whole-library variants: put the setting on the root directory. The admin page li
   *Lyrics*; synced lines follow the playback position and a click on a line seeks): a sidecar `name.lrc` (synced) or
   `name.txt` next to the audio file, the karaoke lyric events of a `.kar` / MIDI file, or the lyrics tag of the audio file
   (ID3 `USLT`, Vorbis `LYRICS`, MP4). In that order; UTF-8 first, then windows-1252.
-* **Online lookup** (admin, on by default with LRCLIB, `lyrics.provider: "none"` turns it off; see `lyrics.*` in [configuration](configuration.md)): *Find lyrics* on a track
+* **Online lookup** (admin, on by default: LRCLIB, then lrc.cx, lyrics.ovh and NetEase as fallbacks; `lyrics.provider: "none"` turns it off, a list such as `"lrclib,netease"` picks your own; see `lyrics.*` in [configuration](configuration.md)): *Find lyrics* on a track
   row of the Library admin, or *Find lyrics for the folder* on a directory. The provider is asked with artist, title, album
   and duration (LRCLIB: exact match, then a search); synced lyrics are preferred over plain ones. The result is only
   proposed: you edit and **save** it, and it is written as a sidecar `.lrc` (time tags present) or `.txt`; the audio file is
   never modified. Lyrics are copyrighted: use the lookup for your own files, personal use.
+* **Choosing** (one track): the providers are asked at the same time and each lyric appears on the page the moment its
+  provider answers (a status chip per provider shows who is still working or failed); you can pick one before the others
+  have finished. Every candidate shows its provider, synced/plain, the number of lines and its first ten non-empty lines;
+  choose one (it fills the editor, where you can still change it) or *None of these*, then save. Nothing is written
+  until you save.
 * **Folder job**: one request at a time (rate limited), results to review per track (`has lyrics`, `matched`,
   `ambiguous` = several different candidates, the first is proposed, `not found`, `failed`); you tick the tracks to save and
   press *Save the selected*. Tracks that already have lyrics are skipped unless you ask for them.

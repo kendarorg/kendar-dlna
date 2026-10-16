@@ -144,7 +144,7 @@ public record AppConfig(Library library, Network network, Server server, Random 
     public record Lyrics(String provider, Integer minIntervalMillis, Integer timeoutSeconds,
             Map<String, Map<String, String>> providers) {
         public Lyrics {
-            provider = provider == null || provider.isBlank() ? "lrclib" : provider.strip().toLowerCase(java.util.Locale.ROOT);
+            provider = provider == null || provider.isBlank() ? "lrclib,lrc.cx,lyrics.ovh,netease" : provider.strip().toLowerCase(java.util.Locale.ROOT);
             minIntervalMillis = minIntervalMillis == null ? 1100 : minIntervalMillis;
             timeoutSeconds = timeoutSeconds == null ? 10 : timeoutSeconds;
             providers = providers == null ? Map.of() : Map.copyOf(providers);

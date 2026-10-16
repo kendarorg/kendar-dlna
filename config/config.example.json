@@ -22,7 +22,7 @@
     "ranges": 10
   },
   "lyrics": {
-    "provider": "lrclib"
+    "provider": "lrclib,lrc.cx,lyrics.ovh,netease"
   },
   "scan": {
     "cron": "0 */12 * * *",

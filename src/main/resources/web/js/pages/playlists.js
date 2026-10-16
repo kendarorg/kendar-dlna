@@ -1,5 +1,4 @@
-      <div v-if="!pl.system" class="row">
-        <button type="button" class="primary" :disabled="busy || !dirty" @click="save">/* Playlists: list/create/delete, and the editor (rename, add via search, reorder, remove, fix broken paths). */
+/* Playlists: list/create/delete, and the editor (rename, add via search, reorder, remove, fix broken paths). */
 import { Api } from '../api.js';
 import { moveItem } from '../core/list.js';
 
@@ -143,7 +142,7 @@ export const PlaylistPage = {
           </div>
         </li>
       </ol>
-      <div class="row">
+      <div v-if="!pl.system" class="row">
         <button type="button" class="primary" :disabled="busy || !dirty" @click="save">Save</button>
         <button type="button" :disabled="busy || !dirty" @click="cancel">Cancel</button>
         <span v-if="dirty" class="muted">Unsaved changes</span>

@@ -1,4 +1,4 @@
-<button type="submit" class="primary" :disabled="busy || !canEdit || !changed">{{ tree ? 'Apply to all&hellip;' : 'Save' }}</button>:disabled="!canEdit || (!tree && fieldDisabled(f.key)) || (clear[f.key])"/* Metadata editor: single and batch tag edits for the tracks of one directory. */
+/* Metadata editor: single and batch tag edits for the tracks of one directory. */
 import { Api } from '../api.js';
 import { formatDuration } from '../core/format.js';
 import { withPlayability } from '../core/track.js';
@@ -298,14 +298,14 @@ export const MetadataPage = {
           <p v-if="selected.length > 1" class="muted">Shown values are shared by all selected files; "(keep)" means they differ. Only fields you change are written. Tick "clear" (or delete a shown value) to remove a tag.</p>
           <div v-for="f in fields" :key="f.key" class="field">
             <label :for="'f-' + f.key">{{ f.label }}</label>
-            <input :id="'f-' + f.key" :type="f.number ? 'number' : 'text'" v-model="form[f.key]" :disabled="!selected.length || fieldDisabled(f.key) || (clear[f.key])" :title="fieldNote(f.key)"
+            <input :id="'f-' + f.key" :type="f.number ? 'number' : 'text'" v-model="form[f.key]" :disabled="!canEdit || (!tree && fieldDisabled(f.key)) || (clear[f.key])" :title="fieldNote(f.key)"
                    :placeholder="placeholder(f.key)" @input="touched[f.key] = true">
             <label v-if="batchLike" class="inline"><input type="checkbox" v-model="clear[f.key]" :disabled="!tree && fieldDisabled(f.key)"> clear</label>
             <p v-if="clearing(f.key) && !clear[f.key]" class="muted small">Will be cleared in all selected files</p>
             <p v-if="fieldNote(f.key)" class="muted small">{{ fieldNote(f.key) }}</p>
           </div>
           <div class="row">
-            <button type="submit" class="primary" :disabled="busy || !selected.length || !changed">Save</button>
+            <button type="submit" class="primary" :disabled="busy || !canEdit || !changed">{{ tree ? 'Apply to all…' : 'Save' }}</button>
             <button type="button" :disabled="busy" @click="cancel">Cancel</button>
           </div>
           <p class="muted small">Files are rewritten safely (temporary file, then atomic rename).</p>

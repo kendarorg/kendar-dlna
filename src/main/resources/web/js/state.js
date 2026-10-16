@@ -6,8 +6,10 @@ export const ui = reactive({
   sidebarOpen: false,     // phone: the sidebar is a drawer
   queueOpen: false,       // Now playing panel
   fullscreen: false,      // full-screen player
+  fullTab: 'playing',     // its tab: playing | info | lyrics (back to playing when it closes)
   shortcutsOpen: false,
   menu: null,             // {x, y, subject}: the track/album/folder action menu
+  lyrics: null,           // a track whose lyrics are shown in a dialog
   info: null,             // a track shown in the info dialog
   addTo: null,            // {title, tracks(): Promise<track[]>}: the "add to playlist" dialog
   consent: null,          // {title, lines, confirmLabel, resolve}: the typed-consent dialog (see askConsent)

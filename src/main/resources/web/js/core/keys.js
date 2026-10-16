@@ -2,7 +2,7 @@
  * Keyboard shortcuts of the player, as a pure mapping from a key event to an action name.
  *   space / k  play-pause        n / p     next / previous      left / right  seek -/+ 5 s
  *   shift+up/down  volume        m  mute   s  shuffle           r  repeat
- *   q  queue panel               f  full-screen player          ?  help
+ *   q  queue panel               f  full-screen player          l  lyrics      ?  help
  */
 export const SHORTCUTS = [
   { keys: 'Space / K', action: 'toggle' },
@@ -14,7 +14,8 @@ export const SHORTCUTS = [
   { keys: 'S', action: 'shuffle' },
   { keys: 'R', action: 'repeat' },
   { keys: 'Q', action: 'queue' },
-  { keys: 'F', action: 'fullscreen' }
+  { keys: 'F', action: 'fullscreen' },
+  { keys: 'L', action: 'lyrics' }
 ];
 
 const TYPING = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
@@ -40,6 +41,7 @@ export function shortcutFor(ev) {
     case 'r': return 'repeat';
     case 'q': return 'queue';
     case 'f': return 'fullscreen';
+    case 'l': return 'lyrics';
     case '?': return 'help';
     default: return null;
   }

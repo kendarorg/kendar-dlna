@@ -62,6 +62,7 @@ export function installShortcuts(target) {
       case 'repeat': player.cycleRepeat(); break;
       case 'queue': ui.queueOpen = !ui.queueOpen; break;
       case 'fullscreen': if (q.items.length) ui.fullscreen = !ui.fullscreen; break;
+      case 'lyrics': if (q.items.length) { ui.fullTab = ui.fullscreen && ui.fullTab === 'lyrics' ? 'playing' : 'lyrics'; ui.fullscreen = true; } break;
       case 'help': ui.shortcutsOpen = !ui.shortcutsOpen; break;
       default: return;
     }

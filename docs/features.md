@@ -253,7 +253,7 @@ Whole-library variants: put the setting on the root directory. The admin page li
   *Lyrics*; synced lines follow the playback position and a click on a line seeks): a sidecar `name.lrc` (synced) or
   `name.txt` next to the audio file, the karaoke lyric events of a `.kar` / MIDI file, or the lyrics tag of the audio file
   (ID3 `USLT`, Vorbis `LYRICS`, MP4). In that order; UTF-8 first, then windows-1252.
-* **Online lookup** (admin, off by default, see `lyrics.*` in [configuration](configuration.md)): *Find lyrics* on a track
+* **Online lookup** (admin, on by default with LRCLIB, `lyrics.provider: "none"` turns it off; see `lyrics.*` in [configuration](configuration.md)): *Find lyrics* on a track
   row of the Library admin, or *Find lyrics for the folder* on a directory. The provider is asked with artist, title, album
   and duration (LRCLIB: exact match, then a search); synced lyrics are preferred over plain ones. The result is only
   proposed: you edit and **save** it, and it is written as a sidecar `.lrc` (time tags present) or `.txt`; the audio file is
@@ -271,7 +271,7 @@ edited live in the admin page *Navigations*:
 ```json
 "navigations": [
   { "name": "Album",   "index": ["album", "title"] },
-  { "name": "Artists", "index": ["artist", "album", "title"], "subitems": 100, "ranges": 20 },
+  { "name": "Artists", "index": ["artist", "album", "title"], "subitems": 100, "ranges": 20, "random": 20 },
   { "name": "Genres",  "index": ["genre", "artist", "album", "title"] },
   { "name": "Songs",   "index": ["title"] }
 ]
@@ -283,6 +283,9 @@ edited live in the admin page *Navigations*:
   `192 kbps`, `256 kbps`, `320 kbps`, listed best first); and the configured `extraTags`. Missing values go to "Unknown <tag>". An `artist`,
   `albumArtist` or `composer` level followed by `album` gets an "All tracks" entry; albums are told apart by
   (album artist, album title), multi-value artists / genres / composers list a track under each value.
+* **Random N**: `"random": 20` on a navigation adds a `[Random 20]` container as the first entry of the navigation
+  (DLNA: one stable pick per client, like a directory's Random N; web: a *Random 20* button on every level, picking from
+  what that level shows). Without it, nothing is added. Edited in the admin *Navigations* page (field *random*).
 * **Ranges**: a level (or track list) with more entries than `subitems` is split into at most `ranges` containers.
   Global defaults in `views.subitems` / `views.ranges`; a navigation can override both.
 * **Where they appear** (DLNA and web): at the root of every library root (the whole library) and inside every directory
@@ -465,7 +468,7 @@ keyboard shortcuts, sign out); a player bar sits at the bottom; on phones the si
 | **Heart** | A heart button on every track row, in the player bar, the full-screen player and the queue toggles the favorite; the state comes from a cache loaded at sign-in |
 | **Now playing panel** (queue button, `Q`) | The queue with total time; click to jump; per row move to top / up / down / bottom and remove; Clear; **Save as playlist** (name pre-filled "Now playing <date>") |
 | **Full-screen player** (cover or button, `F`) | Large cover, seek bar, controls, next tracks, **Info** tab with all metadata |
-| **Player bar** | Cover, title/artist, shuffle, previous (restarts after 3 s), play/pause, next, repeat off / all / one, seek bar with times, volume and mute, **playback speed slider** (-2..+2 = 0.5x, 0.75x, 1x, 1.5x, 2x, pitch preserved, click the label to reset; also in the full-screen player), queue, full-screen. Shuffle, repeat, volume and speed are remembered per browser. The browser tab title shows "artist - title" of the current track. On desktop the navigation sidebar and the library directory tree can be resized by dragging the handle (arrow keys also work, double-click resets) |
+| **Player bar** | Cover, title/artist, shuffle, previous (restarts after 3 s), play/pause, next, repeat off / all / one, seek bar with times, volume and mute, **playback speed slider** (-2..+2 = 0.5x, 0.75x, 1x, 1.5x, 2x, pitch preserved, click the label to reset; also in the full-screen player), queue, full-screen. Shuffle, repeat, volume and speed are remembered per browser. The browser tab title shows "artist - title" of the current track; while it plays, a title longer than 30 characters scrolls (half a second per step, background tabs may slow it to one second) so it can be read in full, and it stands still when paused. On desktop the navigation sidebar and the library directory tree can be resized by dragging the handle (arrow keys also work, double-click resets) |
 
 **Audio engine.** Two `<audio>` elements: one plays, the other preloads the next track when it is played natively. At sign-in
 the browser tests `canPlayType` for MP3, OGG Vorbis, Opus, FLAC and WAV and posts the list to `POST /api/v1/stream/formats`
@@ -473,7 +476,7 @@ the browser tests `canPlayType` for MP3, OGG Vorbis, Opus, FLAC and WAV and post
 transcode the player sends `POST /api/v1/stream/prefetch` instead of preloading. A track that fails to play is skipped.
 **Media Session** gives OS media keys, lock-screen metadata with cover and seek. **Keyboard**: `Space`/`K` play-pause,
 `N` next, `P` previous, left/right seek 5 s, `Shift`+up/down volume, `M` mute, `S` shuffle, `R` repeat, `Q` queue,
-`F` full-screen, `?` help. No gapless playback.
+`F` full-screen, `L` lyrics, `?` help. No gapless playback. The lyrics are one click away: the note button in the player bar (or `L`) opens the full-screen player on its Lyrics tab, and the song menu (⋯) has a *Lyrics* entry that shows them in a dialog.
 
 ### Personal pages (all users)
 

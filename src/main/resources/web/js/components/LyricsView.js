@@ -5,7 +5,7 @@ import { activeLine, isSynced } from '../core/lyrics.js';
 
 export const LyricsView = {
   name: 'LyricsView',
-  props: { track: { type: Object, required: true } },
+  props: { track: { type: Object, required: true }, follow: { type: Boolean, default: true } },
   setup() { return { player: player }; },
   data() { return { lyrics: null, loading: false, error: '', canLookUp: false }; },
   computed: {
@@ -15,7 +15,7 @@ export const LyricsView = {
       const t = this.$t(k);
       return t === k ? this.lyrics.source : t;
     },
-    active() { return this.synced ? activeLine(this.lyrics.lines, this.player.state.position) : -1; }
+    active() { return this.follow && this.synced ? activeLine(this.lyrics.lines, this.player.state.position) : -1; }
   },
   watch: {
     'track.path': { immediate: true, handler() { this.load(); } },

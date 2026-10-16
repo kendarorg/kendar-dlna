@@ -159,7 +159,8 @@ final class SettingsResources {
     }
 
     private static Object navigationBody(org.kendar.dlna.catalog.Navigation n) {
-        return Dto.obj("name", n.name(), "subitems", n.subitems(), "ranges", n.ranges(), "index", n.index());
+        return Dto.obj("name", n.name(), "subitems", n.subitems(), "ranges", n.ranges(), "random", n.random(),
+                "index", n.index());
     }
 
     private ApiResponse getNavigations() {
@@ -171,7 +172,7 @@ final class SettingsResources {
                 "discovered", discoveredTags()));
     }
 
-    /** Body {@code {version, navigations: [{name, subitems?, ranges?, index}], extraTags?}}: validated, saved, applied. */
+    /** Body {@code {version, navigations: [{name, subitems?, ranges?, random?, index}], extraTags?}}: validated, saved, applied. */
     private ApiResponse putNavigations(ApiRequest req) {
         var registry = registry();
         JsonNode body = req.json();
@@ -200,7 +201,8 @@ final class SettingsResources {
             }
             navs.add(new org.kendar.dlna.catalog.Navigation(n.path("name").asText(""),
                     n.hasNonNull("subitems") ? n.get("subitems").asInt() : null,
-                    n.hasNonNull("ranges") ? n.get("ranges").asInt() : null, index));
+                    n.hasNonNull("ranges") ? n.get("ranges").asInt() : null, index,
+                    n.hasNonNull("random") ? n.get("random").asInt() : null));
         }
         List<org.kendar.dlna.catalog.Navigation> valid;
         try {
@@ -235,6 +237,9 @@ final class SettingsResources {
                 o.put("name", n.name());
                 if (n.subitems() != null) {
                     o.put("subitems", n.subitems());
+                }
+                if (n.random() != null) {
+                    o.put("random", n.random());
                 }
                 if (n.ranges() != null) {
                     o.put("ranges", n.ranges());

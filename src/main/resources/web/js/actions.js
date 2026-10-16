@@ -77,6 +77,8 @@ const builtin = [
     run: s => go(folderRoute(parentPath(s.track.path))) },
   { id: 'info', order: 60, icon: 'info', label: 'action.info', kinds: ['track'],
     run: s => { ui.info = s.track; } },
+  { id: 'lyrics', order: 61, icon: 'note', label: 'lyrics.title', kinds: ['track'],
+    run: s => { ui.lyrics = s.track; } },
   { id: 'download', order: 70, icon: 'download', label: 'action.download', kinds: ['track'],
     visible: () => session.downloadAllowed || session.role === 'admin',
     run: s => {

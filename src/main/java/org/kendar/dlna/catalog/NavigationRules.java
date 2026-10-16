@@ -52,7 +52,10 @@ public final class NavigationRules {
             if (n.ranges() != null && n.ranges() < 2) {
                 throw new IllegalArgumentException("navigations['" + n.name() + "']: ranges must be at least 2");
             }
-            out.add(new Navigation(n.name(), n.subitems(), n.ranges(), index));
+            if (n.random() != null && n.random() > 1000) {
+                throw new IllegalArgumentException("navigations['" + n.name() + "']: random must be at most 1000");
+            }
+            out.add(new Navigation(n.name(), n.subitems(), n.ranges(), index, n.random()));
         }
         return List.copyOf(out);
     }

@@ -193,6 +193,8 @@ albumArtist, year, genre, discNumber, discTotal}, random, recent, views, art, tr
 limit, virtual, children: [ {type:"folder", path, name, displayName, virtual, art} | {type:"track", path, track} ] }`. `children` are in the
 `settings.sort` order; `random` is the directory's Random N (use `/library/random?path=`), `views` its configured views.
 
+Navigations (`GET /library/nav/{name}[/{id}]`) list their ranges by default; every item carries `random` (the navigation's Random N, 0 = none) and `.../{id}/tracks?random=N&seed=S` returns N seeded random tracks of the level; `layout=scroll` returns the same level as one continuous list (ranges left out, answer has `layout`).
+
 Letter ranges: `layout=ranges` lists the folder through its ranges as on DLNA (name-sorted folders over `subitems` only; else
 the plain listing): `children` then also holds `{type:"range", id, label, trackCount, folderCount, art}` entries, `range=<id>`
 opens one (its `children` can be ranges again), the answer carries `layout` (`flat`|`ranges`) and, inside a range,

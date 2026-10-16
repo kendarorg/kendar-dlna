@@ -83,16 +83,25 @@ public final class Shuffle implements ContainerNavigation {
      * @param folder a directory with {@code random > 0}
      */
     public synchronized RandomSnapshot open(ClientId client, Folder folder) {
+        return open(client, folder.id(), folder.settings().random(),
+                () -> catalog.get().subtreeTracks(folder.ref()));
+    }
+
+    /**
+     * Same for any scope: {@code scopeId} names it in the context id (a navigation uses {@code <dirId>.<navKey>}),
+     * {@code pool} lists the tracks to pick from (asked only when a new snapshot is made).
+     */
+    public synchronized RandomSnapshot open(ClientId client, String scopeId, int n,
+            Supplier<List<Track>> pool) {
         Instant now = clock.instant();
         sweep(now);
-        int n = folder.settings().random();
-        Key key = new Key(client, folder.id());
+        Key key = new Key(client, scopeId);
         RandomSnapshot cur = current.get(key);
         if (cur != null && !isExpired(cur, now) && cur.requestedSize() == n) {
             cur.touch(now);
             return cur;
         }
-        RandomSnapshot fresh = create(client, folder, n, now);
+        RandomSnapshot fresh = create(client, scopeId, n, pool.get(), now);
         current.put(key, fresh);
         byContext.put(fresh.contextId(), fresh);
         sweep(now);   // the replaced snapshot may now be unreferenced
@@ -181,18 +190,18 @@ public final class Shuffle implements ContainerNavigation {
         return s.activeStreams() == 0 && Duration.between(s.lastActivity(), now).compareTo(ttl) > 0;
     }
 
-    private RandomSnapshot create(ClientId client, Folder folder, int n, Instant now) {
+    private RandomSnapshot create(ClientId client, String scopeId, int n, List<Track> tracks, Instant now) {
         long seed;
         String id;
         do {
             seed = seeds.nextLong();
             id = Long.toHexString(seed);
-        } while (byContext.containsKey(contextId(folder.id(), id)));
-        List<Track> pool = new ArrayList<>(catalog.get().subtreeTracks(folder.ref()));
+        } while (byContext.containsKey(contextId(scopeId, id)));
+        List<Track> pool = new ArrayList<>(tracks);
         pool.sort(Comparator.comparing(Track::ref));   // the seeded order must not depend on display order
         Collections.shuffle(pool, new Random(seed));
         List<Track> picked = SimilarTitles.distinct(pool, n);
-        return new RandomSnapshot(id, folder.id(), client, n, picked.stream().map(Track::ref).toList(), now);
+        return new RandomSnapshot(id, scopeId, client, n, picked.stream().map(Track::ref).toList(), now);
     }
 
     /** Drops snapshots nobody can still use: idle past the TTL, no active stream, and superseded. */

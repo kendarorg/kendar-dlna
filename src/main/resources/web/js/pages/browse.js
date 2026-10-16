@@ -28,7 +28,37 @@ function storedBrowse() {
   try { return localStorage.getItem('kd.folderBrowse') === 'scroll' ? 'scroll' : 'ranges'; } catch (e) { return 'ranges'; }
 }
 
-const COMPONENTS = { TrackList, GroupGrid, InfiniteScroll, Cover, Icon };
+/** A two-state switch with a label on each side; `modelValue` true = the right-hand state. */
+const SwitchToggle = {
+  name: 'SwitchToggle',
+  props: { modelValue: { type: Boolean, required: true }, offLabel: { type: String, required: true },
+    onLabel: { type: String, required: true } },
+  emits: ['update:modelValue'],
+  template: `
+    <label class="switch2">
+      <span class="sw-label" :class="{ on: !modelValue }">{{ offLabel }}</span>
+      <input type="checkbox" role="switch" :checked="modelValue" @change="$emit('update:modelValue', $event.target.checked)">
+      <span class="sw-track" aria-hidden="true"></span>
+      <span class="sw-label" :class="{ on: modelValue }">{{ onLabel }}</span>
+    </label>`
+};
+
+/** The Ranges / Infinite scrolling switch (one preference for folders and navigations). */
+const BrowseSwitch = {
+  name: 'BrowseSwitch',
+  components: { SwitchToggle },
+  props: { modelValue: { type: String, required: true } },
+  emits: ['update:modelValue'],
+  template: `
+    <switch-toggle :model-value="modelValue === 'scroll'" :off-label="$t('folders.browse.ranges')"
+                   :on-label="$t('folders.browse.scroll')" @update:model-value="v => $emit('update:modelValue', v ? 'scroll' : 'ranges')"></switch-toggle>`
+};
+
+function storeBrowse(b) {
+  try { localStorage.setItem('kd.folderBrowse', b); } catch (e) { /* ignore */ }
+}
+
+const COMPONENTS = { TrackList, GroupGrid, InfiniteScroll, Cover, Icon, BrowseSwitch, SwitchToggle };
 
 export const HomePage = {
   name: 'HomePage',
@@ -124,7 +154,7 @@ export const FoldersPage = {
     setBrowse(b) {
       if (b === this.browse) return;
       this.browse = b;
-      try { localStorage.setItem('kd.folderBrowse', b); } catch (e) { /* ignore */ }
+      storeBrowse(b);
       if (this.rangeId) this.$router.replace(folderRoute(this.path)); else this.load();
     },
     rangeRoute(r) { return rangeRoute(this.path, r.id); },
@@ -184,14 +214,9 @@ export const FoldersPage = {
             </div>
           </div>
         </header>
-        <div class="row layout-toggle" role="group" :aria-label="$t('folders.browse')">
-          <button type="button" :class="{ primary: browse === 'ranges' }" :aria-pressed="String(browse === 'ranges')" @click="setBrowse('ranges')">{{ $t('folders.browse.ranges') }}</button>
-          <button type="button" :class="{ primary: browse === 'scroll' }" :aria-pressed="String(browse === 'scroll')" @click="setBrowse('scroll')">{{ $t('folders.browse.scroll') }}</button>
-        </div>
-        <div v-if="folders.length || ranges.length" class="row layout-toggle" role="group" aria-label="Layout">
-          <button type="button" :class="{ primary: layout === 'tiles' }" :aria-pressed="String(layout === 'tiles')" @click="setLayout('tiles')">Tiles</button>
-          <button type="button" :class="{ primary: layout === 'list' }" :aria-pressed="String(layout === 'list')" @click="setLayout('list')">List</button>
-        </div>
+        <browse-switch :model-value="browse" @update:model-value="setBrowse"></browse-switch>
+        <switch-toggle v-if="folders.length || ranges.length" :model-value="layout === 'list'" off-label="Tiles" on-label="List"
+                       @update:model-value="v => setLayout(v ? 'list' : 'tiles')"></switch-toggle>
         <ul v-if="ranges.length && layout === 'list'" class="group-list plain">
           <li v-for="r in ranges" :key="r.id" class="group-row">
             <router-link :to="rangeRoute(r)" class="grow">{{ r.label }}</router-link>
@@ -263,6 +288,13 @@ export const GroupDetailPage = {
       return groupSubject(this.item).tracks();
     },
     async playAt(i) { const t = await this.everything(); playList(t, { start: i }); },
+    async playRandom() {
+      try {
+        const t = await Api.navRandom(this.item, this.item.random);
+        if (!t.length) { toast(this.$t('toast.nothing')); return; }
+        playList(t, { start: 0 });
+      } catch (e) { toast(e.message); }
+    },
     async playAll(shuffle) {
       try {
         const t = await this.everything();
@@ -434,7 +466,7 @@ export const PlaceholderPage = {
 export const NavigationPage = {
   name: 'NavigationPage',
   components: COMPONENTS,
-  data() { return { head: null, pager: null, mode: 'groups' }; },
+  data() { return { head: null, pager: null, mode: 'groups', browse: storedBrowse() }; },
   computed: {
     name() { return this.$route.params.name; },
     navName() { return this.head ? this.head.navigation : ''; },
@@ -450,9 +482,11 @@ export const NavigationPage = {
     crumbRoute(c) { return c.id === '~' ? this.base() : this.base() + '/' + encodeURIComponent(c.id); },
     load() {
       const name = this.name, id = this.id;
+      const scroll = this.browse === 'scroll';
       this.head = null;
       this.pager = pagerFor(async p => {
-        const r = await Api.library(this.base() + '/' + encodeURIComponent(id), p);
+        const r = await Api.library(this.base() + '/' + encodeURIComponent(id),
+          scroll ? Object.assign({ layout: 'scroll' }, p) : p);
         if (name === this.name && id === this.id) {
           this.head = r;
           this.mode = r.tracks ? 'tracks' : 'groups';
@@ -460,12 +494,30 @@ export const NavigationPage = {
         return { items: r.tracks || r.groups || [], total: r.total };
       }, 100);
     },
+    /** Switching goes back to the start of the level: out of a range container, or a reload of the same level. */
+    setBrowse(b) {
+      if (b === this.browse) return;
+      this.browse = b;
+      storeBrowse(b);
+      if (b === 'scroll' && this.item && this.item.type === 'bucket' && this.head) {
+        const level = this.head.path.slice().reverse().find(c => c.type !== 'bucket');
+        if (level) { this.$router.replace(this.crumbRoute(level)); return; }
+      }
+      this.load();
+    },
     async everything() {
       if (!this.item) return [];
       return Api.groupTracks(this.item);
     },
     async playAt(i) {
       if (this.mode === 'tracks') { await this.pager.loadAll(100); playList(this.tracks, { start: i }); }
+    },
+    async playRandom() {
+      try {
+        const t = await Api.navRandom(this.item, this.item.random);
+        if (!t.length) { toast(this.$t('toast.nothing')); return; }
+        playList(t, { start: 0 });
+      } catch (e) { toast(e.message); }
     },
     async playAll(shuffle) {
       try {
@@ -492,11 +544,13 @@ export const NavigationPage = {
           <div class="row">
             <button type="button" class="primary" :disabled="!item.trackCount" @click="playAll(false)"><icon name="play"></icon> {{ $t('action.play') }}</button>
             <button type="button" :disabled="!item.trackCount" @click="playAll(true)"><icon name="shuffle"></icon> {{ $t('player.shuffle') }}</button>
+            <button v-if="item.random > 0" type="button" :disabled="!item.trackCount" @click="playRandom"><icon name="shuffle"></icon> {{ $t('nav.random', { n: item.random }) }}</button>
           </div>
         </div>
       </header>
+      <browse-switch :model-value="browse" @update:model-value="setBrowse"></browse-switch>
       <group-grid v-if="groups.length" :items="groups"></group-grid>
       <track-list v-if="tracks.length" :tracks="tracks" :show-album="true" @play="playAt"></track-list>
-      <infinite-scroll v-if="pager" :key="name + id" :pager="pager" :empty-text="$t('list.empty')"></infinite-scroll>
+      <infinite-scroll v-if="pager" :key="name + id + browse" :pager="pager" :empty-text="$t('list.empty')"></infinite-scroll>
     </section>`
 };

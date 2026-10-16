@@ -17,6 +17,7 @@ function toForm(n) {
     name: n.name || '',
     subitems: n.subitems === null || n.subitems === undefined ? '' : String(n.subitems),
     ranges: n.ranges === null || n.ranges === undefined ? '' : String(n.ranges),
+    random: n.random === null || n.random === undefined ? '' : String(n.random),
     index: (n.index || []).slice(),
     adding: ''
   };
@@ -26,6 +27,7 @@ function fromForm(f) {
   const out = { name: f.name.trim(), index: f.index.slice() };
   if (String(f.subitems).trim() !== '') out.subitems = Number(f.subitems);
   if (String(f.ranges).trim() !== '') out.ranges = Number(f.ranges);
+  if (String(f.random).trim() !== '' && Number(f.random) > 0) out.random = Number(f.random);
   return out;
 }
 
@@ -102,7 +104,8 @@ export const NavigationsPage = {
       <h1>Navigations</h1>
       <p class="muted">Tag navigations appear as containers at the root of every library and in the directories that list
         them (settings: <code>navigations</code>, inherited by sub-directories). Changes apply at once, no restart.
-        A level with more than <em>subitems</em> entries is split into at most <em>ranges</em> containers; leave both empty to use the global defaults.</p>
+        A level with more than <em>subitems</em> entries is split into at most <em>ranges</em> containers; leave both empty to use the global defaults.
+        <em>random</em> adds a <em>[Random N]</em> entry to the navigation (DLNA and web): N random tracks of what it is showing; empty = none.</p>
       <banner :message="error"></banner>
       <banner :message="info" kind="ok"></banner>
 
@@ -112,6 +115,7 @@ export const NavigationsPage = {
           <input v-model="n.name" class="grow" aria-label="Navigation name" maxlength="80" @input="touch">
           <label class="inline">subitems <input v-model="n.subitems" type="number" min="1" placeholder="default" @input="touch"></label>
           <label class="inline">ranges <input v-model="n.ranges" type="number" min="2" placeholder="default" @input="touch"></label>
+          <label class="inline">random <input v-model="n.random" type="number" min="1" max="1000" placeholder="none" @input="touch"></label>
           <button type="button" class="danger" @click="removeNav(i)">Remove</button>
         </div>
         <ol class="nav-levels">

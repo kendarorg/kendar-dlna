@@ -536,16 +536,56 @@ public final class LibraryQuery {
         if (tracksOnly) {
             List<Track> all = new ArrayList<>();
             allTracks(n, all);
+            String random = q.get("random");
+            if (random != null && !random.isBlank()) {
+                // Random N: a seeded pick (the same seed pages through the same order), similar titles thinned out
+                long seed = q.get("seed") == null || q.get("seed").isBlank() ? seeds.nextLong()
+                        : Long.parseLong(q.get("seed").strip());
+                all.sort(Comparator.comparing(Track::ref));
+                java.util.Collections.shuffle(all, new java.util.Random(seed));
+                all = new ArrayList<>(org.kendar.dlna.shuffle.SimilarTitles.distinct(all, Math.max(1, Integer.parseInt(random.strip()))));
+                m.put("seed", seed);
+            }
             return pageOf(m, "tracks", all.size(), p, trackJson(snap, p.slice(all), formats(q)));
         }
-        if (!n.children().isEmpty()) {
+        // layout=scroll: one continuous list, the range containers (A-D, AA-AB, ...) left out
+        boolean scroll = "scroll".equals(q.get("layout"));
+        List<ViewNode> kids = scroll ? withoutRanges(n.children()) : n.children();
+        if (!kids.isEmpty()) {
             List<Object> groups = new ArrayList<>();
-            for (ViewNode c : p.slice(n.children())) {
+            for (ViewNode c : p.slice(kids)) {
                 groups.add(navItem(snap, nav, root, c));
             }
-            return pageOf(m, "groups", n.children().size(), p, groups);
+            m.put("layout", scroll ? "scroll" : "ranges");
+            return pageOf(m, "groups", kids.size(), p, groups);
         }
-        return pageOf(m, "tracks", n.tracks().size(), p, trackJson(snap, p.slice(n.tracks()), formats(q)));
+        List<Track> own = scroll ? tracksWithoutRanges(n) : n.tracks();
+        m.put("layout", scroll ? "scroll" : "ranges");
+        return pageOf(m, "tracks", own.size(), p, trackJson(snap, p.slice(own), formats(q)));
+    }
+
+    /** The children of a node with every range container replaced by what it holds, in order. */
+    private static List<ViewNode> withoutRanges(List<ViewNode> nodes) {
+        List<ViewNode> out = new ArrayList<>();
+        for (ViewNode c : nodes) {
+            if (c.type() == ViewNode.Type.BUCKET) {
+                out.addAll(withoutRanges(c.children()));
+            } else {
+                out.add(c);
+            }
+        }
+        return out;
+    }
+
+    /** The tracks of a node, those inside its range containers included, in order. */
+    private static List<Track> tracksWithoutRanges(ViewNode n) {
+        List<Track> out = new ArrayList<>(n.tracks());
+        for (ViewNode c : n.children()) {
+            if (c.type() == ViewNode.Type.BUCKET) {
+                out.addAll(tracksWithoutRanges(c));
+            }
+        }
+        return out;
     }
 
     private Map<String, Object> navItem(Snapshot snap, org.kendar.dlna.catalog.Navigation nav, ViewNode root,
@@ -554,7 +594,7 @@ public final class LibraryQuery {
         int count = countTracks(n);
         return obj("id", id, "view", "nav/" + nav.key(), "type", lower(n.type()), "title", n.title(), "artist",
                 n.artist(), "year", n.year(), "trackCount", count, "childCount", n.childCount(),
-                "art", trackArt(snap, n.artTrack()));
+                "random", nav.randomCount(), "art", trackArt(snap, n.artTrack()));
     }
     private static int countTracks(ViewNode n) {
         if (n.type() == ViewNode.Type.ALL_TRACKS) {

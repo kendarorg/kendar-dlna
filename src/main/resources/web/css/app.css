@@ -101,3 +101,16 @@ img.cover { width: 9rem; height: 9rem; object-fit: cover; border-radius: 8px; bo
 .list-table td input.narrow { min-width: 4.5rem; width: 6rem; }
 .list-table tr.generated td { background: color-mix(in srgb, var(--accent, #3b82f6) 12%, transparent); }
 .list-json .generate-panel { border: 1px solid var(--border, #8884); border-radius: 6px; padding: .5rem .75rem; margin: .5rem 0; }
+
+/* Two-state switch with a label on each side: "Ranges (o ) Infinite scrolling" */
+.switch2 { display: inline-flex; align-items: center; gap: .55rem; cursor: pointer; user-select: none; margin: .2rem 1rem .2rem 0; }
+.switch2 input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch2 .sw-track { position: relative; width: 2.4rem; height: 1.3rem; border-radius: 1rem; background: var(--line);
+  border: 1px solid var(--muted); transition: background .15s; flex: none; }
+.switch2 .sw-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.3rem - 8px); height: calc(1.3rem - 8px);
+  border-radius: 50%; background: var(--panel); border: 1px solid var(--muted); transition: transform .15s; }
+.switch2 input:checked + .sw-track { background: var(--accent); border-color: var(--accent); }
+.switch2 input:checked + .sw-track::after { transform: translateX(1.1rem); border-color: var(--accent-text); }
+.switch2 input:focus-visible + .sw-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch2 .sw-label { color: var(--muted); }
+.switch2 .sw-label.on { color: var(--text); font-weight: 600; }

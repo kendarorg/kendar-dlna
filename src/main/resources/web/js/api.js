@@ -145,6 +145,16 @@ export const Api = {
     }, { limit: 200 });
     return pager.loadAll(100);
   },
+  /** Random N of a navigation level: n tracks picked from everything below the item (fresh seed each call). */
+  async navRandom(item, n) {
+    const seed = Math.floor(Math.random() * 1e9);
+    const pager = createPager(async p => {
+      const r = await this.library('/' + item.view + '/' + encodeURIComponent(item.id) + '/tracks',
+        Object.assign({ random: n, seed: seed }, p));
+      return { items: r.tracks, total: r.total };
+    }, { limit: 200 });
+    return pager.loadAll(100);
+  },
   /** The tracks directly inside a folder. */
   async folderTracks(path) {
     const out = [];

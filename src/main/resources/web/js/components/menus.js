@@ -6,6 +6,7 @@ import { session, Api } from '../api.js';
 import { SHORTCUTS } from '../core/keys.js';
 import { formatClock, formatSize, formatTime, formatSegmentRange } from '../core/format.js';
 import { player } from '../player/index.js';
+import { LyricsView } from './LyricsView.js';
 import { beforeLogout } from '../personal/runtime.js';
 
 export const ActionMenu = {
@@ -114,6 +115,29 @@ export const InfoDialog = {
         <header class="modal-head"><h2>{{ ui.info.title || ui.info.name }}</h2>
           <button type="button" class="icon-btn" :aria-label="$t('common.close')" @click="ui.info = null"><icon name="close"></icon></button></header>
         <track-info :track="ui.info"></track-info>
+      </section>
+    </div>`
+};
+
+/** The lyrics of any track (the song menu's "Lyrics"); the lines follow the playback only for the playing track. */
+export const LyricsDialog = {
+  name: 'LyricsDialog',
+  components: { Icon, LyricsView },
+  setup() { return { ui: ui, player: player }; },
+  computed: {
+    follow() { const c = this.player.current; return !!(c && this.ui.lyrics && c.track.path === this.ui.lyrics.path); }
+  },
+  mounted() {
+    this.onKey = e => { if (this.ui.lyrics && e.key === 'Escape') { this.ui.lyrics = null; e.stopPropagation(); } };
+    document.addEventListener('keydown', this.onKey, true);
+  },
+  beforeUnmount() { document.removeEventListener('keydown', this.onKey, true); },
+  template: `
+    <div v-if="ui.lyrics" class="modal-backdrop" @click.self="ui.lyrics = null">
+      <section class="modal" role="dialog" aria-modal="true" :aria-label="$t('lyrics.title')">
+        <header class="modal-head"><h2>{{ ui.lyrics.title || ui.lyrics.name }}</h2>
+          <button type="button" class="icon-btn" :aria-label="$t('common.close')" @click="ui.lyrics = null"><icon name="close"></icon></button></header>
+        <lyrics-view :track="ui.lyrics" :follow="follow"></lyrics-view>
       </section>
     </div>`
 };

@@ -135,8 +135,8 @@ public record AppConfig(Library library, Network network, Server server, Random 
     }
 
     /**
-     * Lyrics: {@code provider} is the id of the online provider used to look lyrics up ({@code none} = off, the
-     * default; {@code lrclib} is built in), {@code minIntervalMillis} the least time between two calls to it,
+     * Lyrics: {@code provider} is the id of the online provider used to look lyrics up ({@code none} = off; {@code lrclib}, built in, is the
+     * default), {@code minIntervalMillis} the least time between two calls to it,
      * {@code timeoutSeconds} the request timeout. {@code providers} holds the settings of each provider by id
      * (for {@code lrclib}: {@code baseUrl}).
      */
@@ -144,7 +144,7 @@ public record AppConfig(Library library, Network network, Server server, Random 
     public record Lyrics(String provider, Integer minIntervalMillis, Integer timeoutSeconds,
             Map<String, Map<String, String>> providers) {
         public Lyrics {
-            provider = provider == null || provider.isBlank() ? "none" : provider.strip().toLowerCase(java.util.Locale.ROOT);
+            provider = provider == null || provider.isBlank() ? "lrclib" : provider.strip().toLowerCase(java.util.Locale.ROOT);
             minIntervalMillis = minIntervalMillis == null ? 1100 : minIntervalMillis;
             timeoutSeconds = timeoutSeconds == null ? 10 : timeoutSeconds;
             providers = providers == null ? Map.of() : Map.copyOf(providers);

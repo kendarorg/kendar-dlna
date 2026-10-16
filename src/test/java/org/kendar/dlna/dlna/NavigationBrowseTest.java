@@ -79,6 +79,34 @@ class NavigationBrowseTest {
         assertThat(songs.getItems().get(0).getFirstResource().getValue()).contains("/stream/v." + lib.id());
     }
 
+
+    @Test
+    void aNavigationWithRandomListsARandomNContainerFirst() throws Exception {
+        Snapshot snap = new Snapshot(3, Instant.EPOCH, List.of(lib, rock), tracks, List.<UnsupportedFile>of(), List.of());
+        SnapshotHolder holder = new SnapshotHolder(snap);
+        Views views = new Views(holder::current).withNavigations(new NavigationRegistry(List.of(
+                new Navigation("Artists", null, null, List.of("artist", "album", "title"), 5)), List.of()));
+        BrowseEngine withRandom = new BrowseEngine(holder, new DefaultStreamUrlBuilder(), () -> "http://x:8200",
+                new ArtworkService(holder, ref -> null, ref -> Optional.empty(), Path.of("unused")),
+                new Shuffle(holder::current, new MutableClock(), Duration.ofMinutes(30), new Random(1)), views);
+        Container artists = new DIDLParser().parse(withRandom.browse("f:" + lib.id(), BrowseFlag.DIRECT_CHILDREN, "*", 0, 0,
+                VLC).getResult()).getContainers().stream().filter(c -> c.getTitle().equals("[Artists]")).findFirst()
+                .orElseThrow();
+        assertThat(artists.getChildCount()).isEqualTo(2);   // [Random 5] + Ann
+
+        DIDLContent inside = new DIDLParser().parse(withRandom.browse(artists.getId(), BrowseFlag.DIRECT_CHILDREN, "*", 0, 0,
+                VLC).getResult());
+        assertThat(inside.getContainers()).extracting(Container::getTitle).containsExactly("[Random 5]", "Ann");
+        Container random = inside.getContainers().get(0);
+        assertThat(random.getParentID()).isEqualTo(artists.getId());
+
+        DIDLContent picked = new DIDLParser().parse(withRandom.browse(random.getId(), BrowseFlag.DIRECT_CHILDREN, "*", 0, 0,
+                VLC).getResult());
+        assertThat(picked.getItems()).extracting(Item::getTitle).containsExactlyInAnyOrder("Alpha", "Beta");
+        // the sub-levels have no Random N of their own
+        assertThat(children(inside.getContainers().get(1).getId()).getContainers())
+                .extracting(Container::getTitle).doesNotContain("[Random 5]");
+    }
     @Test
     void aDirectoryWithoutAListOrAnInheritedOneHasNoNavigation() throws Exception {
         assertThat(children("f:" + rock.id()).getContainers()).isEmpty();

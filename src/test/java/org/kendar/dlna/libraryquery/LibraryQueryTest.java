@@ -115,6 +115,35 @@ class LibraryQueryTest {
     }
 
     @Test
+    void aNavigationCanBeListedWithoutItsRanges() {
+        views.withRangeDefaults(1, 2);
+        views.withNavigations(new org.kendar.dlna.catalog.NavigationRegistry(List.of(
+                new org.kendar.dlna.catalog.Navigation("Songs", null, null, List.of("title"))), List.of()));
+
+        Map<String, Object> ranged = query.navigation(lena, "Songs", Map.of());
+        assertThat(ranged.get("groups").toString()).contains("type=bucket");
+
+        Map<String, Object> scroll = query.navigation(lena, "Songs", Map.of("layout", "scroll"));
+        assertThat(scroll.get("layout")).isEqualTo("scroll");
+        assertThat(scroll.toString()).doesNotContain("bucket").contains("tracks=");
+        assertThat((int) scroll.get("total")).isGreaterThan(1);
+    }
+
+    @Test
+    void aNavigationReportsItsRandomNAndPicksFromTheLevel() {
+        views.withNavigations(new org.kendar.dlna.catalog.NavigationRegistry(List.of(
+                new org.kendar.dlna.catalog.Navigation("Songs", null, null, List.of("title"), 1)), List.of()));
+
+        Map<String, Object> top = query.navigation(lena, "Songs", Map.of());
+        assertThat(((Map<?, ?>) top.get("item")).get("random")).isEqualTo(1);
+
+        Map<String, Object> pick = query.navigation(lena, "Songs", "~", true, Map.of("random", "1", "seed", "7"));
+        assertThat((int) pick.get("total")).isEqualTo(1);
+        assertThat(query.navigation(lena, "Songs", "~", true, Map.of("random", "1", "seed", "7")).get("tracks"))
+                .isEqualTo(pick.get("tracks"));
+    }
+
+    @Test
     void navigationsAreBrowsableOverTheCallersRootsOnly() {
         views.withNavigations(new org.kendar.dlna.catalog.NavigationRegistry(List.of(
                 new org.kendar.dlna.catalog.Navigation("Artists", null, null, List.of("artist", "album", "title"))),

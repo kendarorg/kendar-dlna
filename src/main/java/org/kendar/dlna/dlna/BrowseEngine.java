@@ -165,7 +165,7 @@ public final class BrowseEngine {
             case Node.Playlists p -> snap.containerUpdateId(ContainerKeys.PLAYLISTS);
             case Node.FolderNode f -> snap.containerUpdateId(ContainerKeys.folder(f.folder().id()));
             case Node.PlaylistNode p -> snap.containerUpdateId(ContainerKeys.playlist(p.playlist().id()));
-            case Node.RandomNode r -> snap.containerUpdateId(ContainerKeys.virtual(r.snapshot().directoryId()));
+            case Node.RandomNode r -> snap.containerUpdateId(ContainerKeys.virtual(r.snapshot().directoryId().split("\\.")[0]));
             case Node.ViewGroupNode v -> {
                 String[] parts = v.node().id().split("\\.");
                 yield parts.length > 1 ? snap.containerUpdateId(ContainerKeys.virtual(parts[1])) : snap.updateId();
@@ -472,6 +472,7 @@ public final class BrowseEngine {
             case Node.RandomNode r -> contextTracks(r.snapshot().contextId(), r.snapshot().tracks(snap));
             case Node.ViewGroupNode v -> {
                 List<Node> out = new ArrayList<>();
+                navigationRandom(snap, v.node(), client).ifPresent(out::add);
                 v.node().children().forEach(c -> out.add(new Node.ViewGroupNode(c)));
                 out.addAll(contextTracks(v.node().id(), v.node().tracks()));
                 yield out;
@@ -480,6 +481,15 @@ public final class BrowseEngine {
             case Node.TrackNode t -> List.of();
             case Node.ContextTrackNode t -> List.of();
         };
+    }
+
+    /** The Random N of a navigation, listed first inside the navigation's own container (not in its sub-levels). */
+    private Optional<Node> navigationRandom(Snapshot snap, ViewNode node, ClientId client) {
+        return views.navigationOf(snap, node).filter(n -> n.randomCount() > 0).map(n -> {
+            String[] parts = node.id().split("\\.");
+            return (Node) new Node.RandomNode(shuffle.open(client, parts[1] + "." + parts[2], n.randomCount(),
+                    () -> snap.folderById(parts[1]).map(f -> snap.subtreeTracks(f.ref())).orElse(List.of())));
+        });
     }
 
     private static List<Node> entryNodes(List<FolderRanges.Entry> entries) {
@@ -543,7 +553,9 @@ public final class BrowseEngine {
                     : ObjectIds.folderOf(Folder.idOf(f.folder().ref().parent()));
             case Node.TrackNode t -> ObjectIds.folderOf(Folder.idOf(t.track().parentRef()));
             case Node.PlaylistNode p -> ObjectIds.PLAYLISTS;
-            case Node.RandomNode r -> ObjectIds.folderOf(r.snapshot().directoryId());
+            case Node.RandomNode r -> r.snapshot().directoryId().contains(".")
+                    ? ObjectIds.container(Views.CONTEXT_PREFIX + r.snapshot().directoryId())   // a navigation's Random N
+                    : ObjectIds.folderOf(r.snapshot().directoryId());
             case Node.ViewGroupNode v -> v.node().parentId() != null ? ObjectIds.container(v.node().parentId())
                     : ObjectIds.folderOf(directoryOfViewContext(v.node().id()));
             case Node.RangeNode r -> r.range().parentId() != null ? ObjectIds.container(r.range().parentId())
@@ -616,7 +628,7 @@ public final class BrowseEngine {
 
     private Container viewContainer(Snapshot snap, ViewNode n, String parentId, String base, DidlFilter filter) {
         String id = ObjectIds.container(n.id());
-        Integer count = childCount(n.childCount(), filter);
+        Integer count = childCount(n.childCount() + (views.navigationOf(snap, n).filter(nv -> nv.randomCount() > 0).isPresent() ? 1 : 0), filter);
         Container c;
         switch (n.type()) {
             case ALBUM -> {

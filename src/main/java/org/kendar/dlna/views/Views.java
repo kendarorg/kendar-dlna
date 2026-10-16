@@ -179,6 +179,15 @@ public final class Views implements ContainerNavigation {
         return names.stream().map(st::byName).flatMap(Optional::stream).distinct().toList();
     }
 
+    /** The navigation a root container {@code v.<dirId>.<navKey>} belongs to; empty for any other node. */
+    public Optional<Navigation> navigationOf(Snapshot snap, ViewNode node) {
+        if (node.type() != ViewNode.Type.ROOT || !node.id().startsWith(CONTEXT_PREFIX)) {
+            return Optional.empty();
+        }
+        String[] parts = node.id().split("\\.");
+        return parts.length == 3 ? navigations.state().byKey(parts[2]) : Optional.empty();
+    }
+
     /** The navigation containers of a directory (those that have something to show), in settings order. */
     public List<ViewNode> navigationRoots(Snapshot snap, Folder folder) {
         return navigationsOf(snap, folder).stream().map(n -> navigationTree(snap, folder, n).root())

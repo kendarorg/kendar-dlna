@@ -71,6 +71,8 @@ export const PlayerBar = {
         <input type="range" class="volume" min="0" max="1" step="0.02" :value="st.muted ? 0 : st.volume" :aria-label="$t('player.volume')" @input="setVolume">
         <button type="button" class="icon-btn" :class="{ on: ui.queueOpen }" :aria-pressed="ui.queueOpen" :aria-label="$t('queue.title')" :title="$t('queue.title')"
                 @click="ui.queueOpen = !ui.queueOpen"><icon name="queue"></icon></button>
+        <button type="button" class="icon-btn" :disabled="!track" :aria-label="$t('lyrics.show')" :title="$t('lyrics.show') + ' (L)'"
+                @click="ui.fullTab = 'lyrics'; ui.fullscreen = true"><icon name="note"></icon></button>
         <button type="button" class="icon-btn" :disabled="!track" :aria-label="$t('player.fullscreen')" :title="$t('player.fullscreen')"
                 @click="ui.fullscreen = true"><icon name="fullscreen"></icon></button>
       </div>
@@ -133,8 +135,8 @@ export const FullPlayer = {
   name: 'FullPlayer',
   components: { Icon, Cover, PlayerControls, SeekBar, TrackInfo, FavButton, SpeedControl, LyricsView },
   setup() { return { player: player, ui: ui }; },
-  data() { return { tab: 'playing' }; },
   computed: {
+    tab: { get() { return this.ui.fullTab; }, set(t) { this.ui.fullTab = t; } },
     entry() { return this.player.current; },
     track() { return this.entry ? this.entry.track : null; },
     upcoming() {
@@ -144,7 +146,10 @@ export const FullPlayer = {
   },
   watch: {
     track(t) { if (!t) this.ui.fullscreen = false; },
-    'ui.fullscreen'(open) { if (open) { this.tab = 'playing'; this.$nextTick(() => this.$refs.close && this.$refs.close.focus()); } }
+    'ui.fullscreen'(open) {
+      if (open) this.$nextTick(() => this.$refs.close && this.$refs.close.focus());
+      else this.ui.fullTab = 'playing';
+    }
   },
   mounted() {
     this.onKey = e => { if (this.ui.fullscreen && e.key === 'Escape') { this.ui.fullscreen = false; e.stopPropagation(); } };

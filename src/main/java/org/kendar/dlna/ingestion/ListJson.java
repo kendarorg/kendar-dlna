@@ -393,7 +393,7 @@ public final class ListJson {
                 tags.year(), tags.trackNo(), tags.discNo(), tags.discTotal(),
                 entry.author() != null ? List.of() : tags.artists(), tags.albumArtists(), tags.genres(),
                 tags.composer(), tags.composers(),
-                entry.transcriber() != null ? entry.transcriber() : tags.transcriber());
+                entry.transcriber() != null ? entry.transcriber() : tags.transcriber(), tags.extras());
     }
 
     /** Merges the entry of the file's sidecar, else of its directory list.json (read from disk) over {@code tags}. */

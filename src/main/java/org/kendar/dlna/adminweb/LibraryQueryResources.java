@@ -36,6 +36,14 @@ final class LibraryQueryResources {
                         : null;
                 default -> null;
             };
+            case "navigations" -> n == 1 ? ApiResponse.ok(query.navigations()) : null;
+            case "nav" -> switch (n) {
+                case 2 -> ApiResponse.ok(query.navigation(user, seg.get(1), LibraryQuery.NAV_ROOT, false, q));
+                case 3 -> ApiResponse.ok(query.navigation(user, seg.get(1), seg.get(2), false, q));
+                case 4 -> seg.get(3).equals("tracks")
+                        ? ApiResponse.ok(query.navigation(user, seg.get(1), seg.get(2), true, q)) : null;
+                default -> null;
+            };
             case "songs" -> n == 1 ? ApiResponse.ok(query.songs(user, q)) : null;
             case "tracks" -> n == 1 ? ApiResponse.ok(query.track(user, q)) : null;
             case "search" -> n == 1 ? ApiResponse.ok(query.search(user, q))

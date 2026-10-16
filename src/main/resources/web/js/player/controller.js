@@ -8,9 +8,11 @@
  *   'queuechange' {queue}                                     any change of items/index/shuffle/repeat (extension: queue sync)
  *   'state'       {status}                                    idle | loading | playing | paused
  *   'time'        {position, duration}
+ *   'ratechange'  {rate}                                      playback speed multiplier changed
  */
 import * as Q from '../core/queue.js';
 import { createEmitter } from '../core/events.js';
+import { clampStep, rateForStep } from '../core/speed.js';
 
 export function createController(deps) {
   const engine = deps.engine;
@@ -26,6 +28,7 @@ export function createController(deps) {
     duration: 0,
     volume: prefs.get('volume', 1),
     muted: prefs.get('muted', false),
+    speed: clampStep(prefs.get('speed', 0)),
     error: '',
     loadedId: null
   });
@@ -34,6 +37,7 @@ export function createController(deps) {
 
   engine.setVolume(state.volume);
   engine.setMuted(state.muted);
+  engine.setRate(rateForStep(state.speed));
 
   function current() { return Q.current(state.queue); }
   function setStatus(s) { if (state.status !== s) { state.status = s; events.emit('state', { status: s }); } }
@@ -205,6 +209,14 @@ export function createController(deps) {
       engine.setVolume(state.volume);
       prefs.set('volume', state.volume);
     },
+    /** Speed step -2..+2 (0 = normal), pitch preserved; kept across tracks and sessions. */
+    setSpeed(step) {
+      state.speed = clampStep(step);
+      engine.setRate(rateForStep(state.speed));
+      prefs.set('speed', state.speed);
+      events.emit('ratechange', { rate: rateForStep(state.speed) });
+    },
+    get rate() { return rateForStep(state.speed); },
     toggleMute() { state.muted = !state.muted; engine.setMuted(state.muted); prefs.set('muted', state.muted); },
     toggleShuffle() {
       setQueue(Q.setShuffle(state.queue, !state.queue.shuffle, rng));

@@ -1,10 +1,12 @@
-/* Metadata editor: single and batch tag edits for the tracks of one directory. */
+<button type="submit" class="primary" :disabled="busy || !canEdit || !changed">{{ tree ? 'Apply to all&hellip;' : 'Save' }}</button>:disabled="!canEdit || (!tree && fieldDisabled(f.key)) || (clear[f.key])"/* Metadata editor: single and batch tag edits for the tracks of one directory. */
 import { Api } from '../api.js';
 import { formatDuration } from '../core/format.js';
 import { withPlayability } from '../core/track.js';
 import { Icon } from '../components/icons.js';
 import { player } from '../player/index.js';
 import { playList } from '../actions.js';
+import { askConsent } from '../state.js';
+import { CONSENT_PHRASE } from '../core/consent.js';
 
 const TAG_FIELDS = [
   { key: 'title', label: 'Title', number: false },
@@ -87,7 +89,7 @@ export const MetadataPage = {
   data() {
     return {
       folder: null, selected: [], form: emptyForm(), original: emptyForm(), clear: {}, touched: {}, fields: TAG_FIELDS,
-      error: '', info: '', failures: [], busy: false
+      error: '', info: '', failures: [], busy: false, scope: 'selection'
     };
   },
   computed: {
@@ -95,14 +97,19 @@ export const MetadataPage = {
     tracks() { return this.folder ? this.folder.children.filter(c => c.type === 'track') : []; },
     editable() { return this.tracks.filter(c => c.track.editable); },
     selectedTracks() { return this.tracks.filter(c => this.selected.includes(c.path)); },
-    single() { return this.selected.length === 1; },
+    tree() { return this.scope === 'tree'; },
+    single() { return !this.tree && this.selected.length === 1; },
+    batchLike() { return this.tree || this.selected.length > 1; },
+    canEdit() { return this.tree || this.selected.length > 0; },
     edit() { return buildEdit(this.single, this.form, this.original, this.clear, this.touched); },
     changed() { return Object.keys(this.edit).length > 0; },
     playingPath() { const c = this.player.current; return c && c.track ? c.track.path : null; },
     isPlaying() { return this.player.state.status === 'playing' || this.player.state.status === 'loading'; }
   },
   watch: {
+    scope() { this.prefill(false); },
     selected(now, before) {
+      if (this.tree) { return; }
       // From/to a single file or an empty selection starts afresh; within a batch, keep what the user changed.
       this.prefill(now.length > 1 && before.length > 1);
     }
@@ -155,6 +162,10 @@ export const MetadataPage = {
      * values, touched fields keep the user's text and the clear boxes stay as they are.
      */
     prefill(keepTyped) {
+      if (this.tree) {
+        this.clear = {}; this.touched = {}; this.original = emptyForm(); this.form = emptyForm();
+        return;
+      }
       if (this.selected.length > 1) {
         const common = commonValues(this.selectedTracks.map(c => c.track));
         const original = emptyForm();
@@ -181,7 +192,34 @@ export const MetadataPage = {
     },
     selectAll() { this.selected = this.editable.map(c => c.path); },
     selectNone() { this.selected = []; },
+    /** Whole folder tree: count first, typed consent, then the background job with its progress. */
+    async saveTree() {
+      this.busy = true; this.error = ''; this.info = ''; this.failures = [];
+      try {
+        const edit = this.edit;
+        const p = await Api.bulkTagsPreview(this.path, edit);
+        if (!p.files) { this.error = 'No file below this folder can hold these fields.'; return; }
+        const lines = [p.files + ' file(s) will be rewritten: ' + Object.keys(edit).join(', ') + '.'];
+        if (p.segments) lines.push(p.segments + ' cue/chapter track(s) have no tags of their own and are skipped.');
+        if (p.notEditable) lines.push(p.notEditable + ' read-only file(s) (Opus, raw AAC) are skipped.');
+        if (p.notApplicable) lines.push(p.notApplicable + ' file(s) cannot store these fields and are skipped.');
+        lines.push('This changes the files on disk and cannot be undone (old values are logged).');
+        const ok = await askConsent({ title: 'Edit tags below ' + this.path + '?', lines: lines, confirmLabel: 'Edit ' + p.files + ' files' });
+        if (!ok) return;
+        let job = await Api.bulkTagsApply(this.path, edit, CONSENT_PHRASE, p.files);
+        while (job.running) {
+          this.info = 'Editing tags: ' + (job.done + job.failed) + ' of ' + job.total + '...';
+          await new Promise(r => setTimeout(r, 700));
+          job = await Api.bulkTagsJob();
+        }
+        this.failures = job.failures;
+        if (job.error) this.error = job.error;
+        this.info = 'Tags written to ' + job.done + ' of ' + job.total + ' files' + (job.failed ? ' (' + job.failed + ' failed)' : '') + '.';
+        await this.load();
+      } catch (e) { this.error = e.message; } finally { this.busy = false; }
+    },
     async save() {
+      if (this.tree) { return this.saveTree(); }
       this.busy = true; this.error = ''; this.info = ''; this.failures = [];
       const edit = this.edit;
       try {
@@ -247,7 +285,14 @@ export const MetadataPage = {
           </table>
         </div>
         <form class="editor stack" @submit.prevent="save">
-          <h2 v-if="!selected.length">Select tracks</h2>
+          <fieldset class="scope">
+            <legend>Apply to</legend>
+            <label class="inline"><input type="radio" value="selection" v-model="scope"> the selected files</label>
+            <label class="inline"><input type="radio" value="tree" v-model="scope"> this folder and all its subfolders</label>
+          </fieldset>
+          <p v-if="tree" class="banner info">Every file below <code>{{ path }}</code> that can hold the filled fields is rewritten. You will see the count first and must type I CONSENT. Old values are logged to tag-changes.log in the data directory.</p>
+          <h2 v-if="tree">Edit the whole folder tree</h2>
+          <h2 v-else-if="!selected.length">Select tracks</h2>
           <h2 v-else-if="single">Edit one file</h2>
           <h2 v-else>Edit {{ selected.length }} files</h2>
           <p v-if="selected.length > 1" class="muted">Shown values are shared by all selected files; "(keep)" means they differ. Only fields you change are written. Tick "clear" (or delete a shown value) to remove a tag.</p>
@@ -255,7 +300,7 @@ export const MetadataPage = {
             <label :for="'f-' + f.key">{{ f.label }}</label>
             <input :id="'f-' + f.key" :type="f.number ? 'number' : 'text'" v-model="form[f.key]" :disabled="!selected.length || fieldDisabled(f.key) || (clear[f.key])" :title="fieldNote(f.key)"
                    :placeholder="placeholder(f.key)" @input="touched[f.key] = true">
-            <label v-if="selected.length > 1" class="inline"><input type="checkbox" v-model="clear[f.key]" :disabled="fieldDisabled(f.key)"> clear</label>
+            <label v-if="batchLike" class="inline"><input type="checkbox" v-model="clear[f.key]" :disabled="!tree && fieldDisabled(f.key)"> clear</label>
             <p v-if="clearing(f.key) && !clear[f.key]" class="muted small">Will be cleared in all selected files</p>
             <p v-if="fieldNote(f.key)" class="muted small">{{ fieldNote(f.key) }}</p>
           </div>

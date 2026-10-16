@@ -331,4 +331,35 @@ class FolderServiceTest {
         assertThat(FolderService.ArtKind.parse("rear")).contains(FolderService.ArtKind.REAR);
         assertThat(FolderService.ArtKind.parse("side")).isEmpty();
     }
+
+    // ---- delete preview / consent ----
+
+    @Test
+    void deletePreviewCountsSongsOtherFilesAndSubfolders() throws IOException {
+        Files.writeString(tmp.resolve("music/Album/notes.txt"), "x");
+        Files.createDirectories(tmp.resolve("music/Album/Sub"));
+        Files.createDirectories(tmp.resolve("music/Album/.deleted/old"));
+        Files.writeString(tmp.resolve("music/Album/.deleted/old/ignored.txt"), "x");
+
+        FolderService.DeletePreview p = folders.previewDelete(album);
+
+        assertThat(p.tracks()).isEqualTo(4);
+        assertThat(p.otherFiles()).as("notes.txt only: audio files and the trash are not counted").isEqualTo(1);
+        assertThat(p.folders()).isEqualTo(1);
+    }
+
+    @Test
+    void deletePreviewRefusesRootsAndUnknownDirectories() {
+        assertThatThrownBy(() -> folders.previewDelete(RootRef.parse("main"))).isInstanceOf(CurationException.class);
+        assertThatThrownBy(() -> folders.previewDelete(RootRef.parse("main/Nope"))).isInstanceOf(CurationException.class);
+    }
+
+    @Test
+    void consentNeedsTheExactCapitalisedPhrase() {
+        Consent.require("I CONSENT");
+        for (String bad : new String[] {null, "", "i consent", "I consent", "I CONSENT ", "yes"}) {
+            assertThatThrownBy(() -> Consent.require(bad)).isInstanceOf(CurationException.class)
+                    .extracting(e -> ((CurationException) e).code()).isEqualTo(CurationException.INVALID);
+        }
+    }
 }

@@ -66,6 +66,14 @@ are rooted, so for a local run set them explicitly (or pass `-Dkendar.dataDir`).
 | `server.friendlyName` | string | `Kendar DLNA` | not blank | Name shown by renderers |
 | `random.ttlMinutes` | int | 30 | >= 1 | Random N snapshot lifetime after the last browse/stream activity |
 | `views.bucketThreshold` | int | 500 | >= 1 | View lists longer than this (Artists, Composers, Titles) split into `A`-`Z`/`#`; a directory can override it with `bucketThreshold` in its `settings.json` (admin: Directory settings) |
+| `views.subitems` | int | 50 | >= 1 | Letter ranges: a directory (name-sorted) or a navigation level with more entries than this is split into ranges ("A-C", "D-Ha"). A directory's `subitems` in `settings.json` (inherited by sub-directories) or a navigation's own `subitems` override it |
+| `views.ranges` | int | 10 | >= 2 | The most range containers made when splitting (a range still longer than `subitems` is split again). Same overrides as `views.subitems` |
+| `navigations` | list of objects | `[]` | see [Navigations](features.md#navigations) | Tag navigations: `{ "name", "subitems"?, "ranges"?, "index": [tag, ...] }`; names unique; every `index` entry a standard tag (`title artist album albumArtist genre year composer`), a virtual tag (`type format bitrate`) or one of `extraTags`. Editable live in the admin page *Navigations* (no restart) |
+| `extraTags` | list of strings | `[]` | not blank, no duplicates | Non-standard tags (ID3 user text frames, Vorbis comments, MP4 free-form atoms) to read from the files and offer in navigations. The scanner lists the tags it finds in `tags.json` next to `config.json` (fallback: `library.dataDir`); changing this list needs "Re-read all tags" (a restart re-reads everything) |
+| `lyrics.provider` | string | `none` | `none` or a built-in provider id (`lrclib`) | Online lyrics lookup, **off by default** (the server is a LAN appliance: nothing leaves it unless you switch this on). Lookups only happen on an admin action (single track or folder), never during scans or playback |
+| `lyrics.minIntervalMillis` | int | 1100 | >= 0 | Least time between two requests to the provider (rate limit) |
+| `lyrics.timeoutSeconds` | int | 10 | >= 1 | Timeout of one request |
+| `lyrics.providers.<id>` | object | `{}` | per provider | Settings of one provider; `lrclib`: `baseUrl` (default `https://lrclib.net/api`). Further providers implement `LyricsProvider` and are registered in `LyricsProviders` |
 | `scan.cron` | string | `0 */12 * * *` | valid 5-field cron | Periodic rescan, local time. Syntax in [features.md](features.md#library-and-scanning) |
 | `scan.catchUpThresholdHours` | int | 12 | >= 1 | After a start from the persisted index, rescan in the background if the last completed scan is older |
 | `transcode.enabled` | bool | true | - | false: originals only, MIDI unavailable, cue sheets and chapters ignored (files stay whole) |

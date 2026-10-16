@@ -1,10 +1,12 @@
 /* Library browser (admin): directory tree on the left, the player's folder look (cover header, tiles, track list) on the right. */
 import { Api } from '../api.js';
-import { ui } from '../state.js';
+import { ui, askConsent } from '../state.js';
+import { CONSENT_PHRASE } from '../core/consent.js';
 import { Icon } from '../components/icons.js';
 import { Cover } from '../components/media.js';
 import { DirTree } from '../components/DirTree.js';
 import { RowMenu } from '../components/RowMenu.js';
+import { PaneResizer } from '../components/PaneResizer.js';
 import { formatDuration, formatTotal, formatSize } from '../core/format.js';
 import { sectionsRoute } from '../core/list-json.js';
 import { folderRoute } from '../core/urls.js';
@@ -19,11 +21,12 @@ const prefs = createPrefs(storage(), 'kd.');
 
 export const LibraryPage = {
   name: 'LibraryPage',
-  components: { Icon, Cover, DirTree, RowMenu },
+  components: { Icon, Cover, DirTree, RowMenu, PaneResizer },
   data() {
     return {
       tree: null, folder: null, busy: false, forceTags: false, error: '', info: '', loading: false, treeOpen: false,
-      artVersion: Date.now(), expanded: prefs.get('lib.expanded', null)
+      artVersion: Date.now(), expanded: prefs.get('lib.expanded', null),
+      folderView: prefs.get('lib.folderView', 'boxes') === 'list' ? 'list' : 'boxes'
     };
   },
   computed: {
@@ -109,13 +112,20 @@ export const LibraryPage = {
       try { await Api.createDir(this.folder.path, name.trim()); this.info = 'Directory created.'; this.refreshSoon(); }
       catch (e) { this.error = e.message; }
     },
-    async removeFolder(path, name, trackCount) {
-      const what = trackCount ? ' and everything in it (' + trackCount + ' tracks)' : '';
-      if (!window.confirm('Delete the directory "' + name + '"' + what + ' from disk? This cannot be undone.')) return;
+    async removeFolder(path, name) {
       this.error = ''; this.info = '';
       try {
-        await Api.deleteDir(path, true);
-        this.info = 'Directory deleted.';
+        const p = await Api.deletePreview(path);
+        const lines = [p.tracks ? this.$tn('lib.deleteDir.songs', p.tracks) : this.$t('lib.deleteDir.none')];
+        if (p.otherFiles) lines.push(this.$tn('lib.deleteDir.others', p.otherFiles));
+        if (p.folders) lines.push(this.$tn('lib.deleteDir.folders', p.folders));
+        lines.push(this.$t('lib.deleteDir.trash'));
+        const ok = await askConsent({
+          title: this.$t('lib.deleteDir.title', { name: name }), lines: lines, confirmLabel: this.$t('lib.deleteDir.confirm')
+        });
+        if (!ok) return;
+        await Api.deleteDir(path, true, CONSENT_PHRASE);
+        this.info = this.$t('lib.deleteDir.done');
         const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : path;
         if (this.path === path || (this.path || '').startsWith(path + '/')) this.select(parent);
         else this.refreshSoon();
@@ -132,6 +142,7 @@ export const LibraryPage = {
     trackMenu(c) {
       const items = [];
       if (c.track.editable) items.push({ id: 'edit', icon: 'edit', label: this.$t('lib.editTags'), run: () => this.go({ path: '/metadata', query: { p: this.folder.path, t: c.path } }) });
+      items.push({ id: 'lyrics', icon: 'note', label: this.$t('lyrics.find'), run: () => this.go({ path: '/lyrics', query: { p: this.folder.path, t: c.path } }) });
       items.push({ id: 'sections', icon: 'playlist', label: this.$t('listjson.file.open'), run: () => this.go(sectionsRoute(c.path)) });
       items.push({ id: 'info', icon: 'info', label: this.$t('action.info'), run: () => this.openInfo(c) });
       if (!c.track.segment) items.push({ id: 'delete', icon: 'close', label: 'Delete file', run: () => this.removeTrack(c) });
@@ -143,13 +154,15 @@ export const LibraryPage = {
         { id: 'settings', icon: 'settings', label: this.$t('lib.settings'), run: () => this.go({ path: '/settings', query: { p: f.path } }) }
       ];
       if (f.trackCount) items.push({ id: 'tags', icon: 'edit', label: this.$t('lib.editTags'), run: () => this.go({ path: '/metadata', query: { p: f.path } }) });
+      if (f.trackCount) items.push({ id: 'lyrics', icon: 'note', label: this.$t('lyrics.findFolder'), run: () => this.go({ path: '/lyrics', query: { p: f.path } }) });
       if (f.trackCount || f.hasList) items.push({ id: 'list', icon: 'playlist', label: this.$t('listjson.open'), run: () => this.go({ path: '/list-json', query: { p: f.path } }) });
       if (f.virtual) items.push({ id: 'sections', icon: 'playlist', label: this.$t('listjson.file.open'), run: () => this.go(sectionsRoute(f.path)) });
       items.push({ id: 'rescan', icon: 'refresh', label: this.$t('lib.rescan'), run: () => this.rescan(f.path, false) });
-      if (!f.virtual) items.push({ id: 'delete', icon: 'close', label: 'Delete directory', run: () => this.removeFolder(f.path, f.displayName, f.trackCount) });
+      if (!f.virtual) items.push({ id: 'delete', icon: 'close', label: 'Delete directory', run: () => this.removeFolder(f.path, f.displayName) });
       items.push({ id: 'player', icon: 'play', label: this.$t('lib.openInPlayer'), run: () => this.go(folderRoute(f.path)) });
       return items;
     },
+    setFolderView(v) { this.folderView = v === 'list' ? 'list' : 'boxes'; prefs.set('lib.folderView', this.folderView); },
     playerRoute(path) { return folderRoute(path); }
   },
   template: `
@@ -162,6 +175,7 @@ export const LibraryPage = {
                   @select="select" @toggle="toggle"></dir-tree>
         <p v-if="tree && !tree.roots.length" class="muted pad">{{ $t('lib.noRoots') }}</p>
       </aside>
+      <pane-resizer css-var="--tree-w" pane=".lib-tree" pref-key="pane.tree" :min="200" :max="560" :fallback="272" :label="$t('pane.resizeTree')"></pane-resizer>
       <div class="lib-main">
         <button type="button" class="only-narrow lib-toggle" :aria-expanded="String(treeOpen)" @click="treeOpen = !treeOpen">
           <icon name="folder"></icon> {{ $t('lib.directories') }}</button>
@@ -195,6 +209,7 @@ export const LibraryPage = {
               <div class="row lib-actions" role="toolbar" :aria-label="$t('lib.actions')">
                 <router-link class="button" :to="{ path: '/settings', query: { p: folder.path } }"><icon name="settings"></icon> {{ $t('lib.settings') }}</router-link>
                 <router-link class="button" :to="{ path: '/metadata', query: { p: folder.path } }" v-if="folder.trackCount"><icon name="edit"></icon> {{ $t('lib.editTags') }}</router-link>
+                <router-link class="button" :to="{ path: '/lyrics', query: { p: folder.path } }" v-if="folder.trackCount"><icon name="note"></icon> {{ $t('lyrics.findFolder') }}</router-link>
                 <router-link class="button" :to="{ path: '/list-json', query: { p: folder.path } }" v-if="folder.trackCount || folder.hasList"><icon name="playlist"></icon> {{ $t('listjson.open') }}<span v-if="folder.hasList" class="badge">list.json</span></router-link>
                 <router-link class="button" v-if="folder.virtual" :to="sectionsRoute(folder.path)" :title="$t('listjson.file.open.help')"><icon name="playlist"></icon> {{ $t('listjson.file.open') }}</router-link>
                 <button type="button" class="primary" @click="rescan(folder.path, forceTags)"><icon name="refresh"></icon> {{ $t('lib.rescan') }}</button>
@@ -204,13 +219,26 @@ export const LibraryPage = {
                 <template v-if="!folder.virtual">
                   <label class="button" title="Upload audio files into this directory"><input type="file" multiple hidden accept="audio/*,.mid,.midi,.flac,.opus,.m4a,.aac,.wma,.ape" :disabled="busy" @change="uploadFiles"> Upload files&hellip;</label>
                   <button type="button" :disabled="busy" @click="newFolder"><icon name="folder"></icon> New directory</button>
-                  <button v-if="!folder.isRoot" type="button" class="danger" :disabled="busy" @click="removeFolder(folder.path, folder.displayName, folder.trackCount)">Delete directory</button>
+                  <button v-if="!folder.isRoot" type="button" class="danger" :disabled="busy" @click="removeFolder(folder.path, folder.displayName)">Delete directory</button>
                 </template>
               </div>
             </div>
           </header>
 
-          <div class="tiles" v-if="subfolders.length">
+          <div v-if="subfolders.length" class="row lib-viewswitch" role="group" :aria-label="$t('lib.view')">
+            <button type="button" :class="{ on: folderView === 'boxes' }" :aria-pressed="String(folderView === 'boxes')" @click="setFolderView('boxes')">{{ $t('lib.view.boxes') }}</button>
+            <button type="button" :class="{ on: folderView === 'list' }" :aria-pressed="String(folderView === 'list')" @click="setFolderView('list')">{{ $t('lib.view.list') }}</button>
+          </div>
+          <ul class="group-list lib-folderlist" v-if="subfolders.length && folderView === 'list'">
+            <li v-for="f in subfolders" :key="f.path" class="group-row" @contextmenu.prevent="select(f.path)">
+              <cover :art="f.hasFront ? artUrl(f.path, 'front') : null" size="small" :icon="f.virtual ? 'album' : 'folder'"></cover>
+              <a href="#" class="grow" @click.prevent="select(f.path)">{{ f.displayName }}<span v-if="f.virtual" class="badge" :title="$t('badge.virtual')">cue</span></a>
+              <span class="muted small">{{ f.trackCount ? $tn('count.tracks', f.trackCount) : '' }}</span>
+              <span v-for="b in folderBadges(f).filter(b => b.kind)" :key="b.id" class="badge" :class="b.kind" :title="$t(b.helpKey)">{{ $t(b.labelKey) }}</span>
+              <row-menu :label="f.displayName" :items="folderMenu(f)"></row-menu>
+            </li>
+          </ul>
+          <div class="tiles" v-if="subfolders.length && folderView === 'boxes'">
             <div v-for="f in subfolders" :key="f.path" class="tile" @contextmenu.prevent="select(f.path)">
               <div class="tile-art">
                 <a href="#" :aria-label="f.displayName" tabindex="-1" @click.prevent="select(f.path)"><cover :art="f.hasFront ? artUrl(f.path, 'front') : null" size="medium" :icon="f.virtual ? 'album' : 'folder'"></cover></a>

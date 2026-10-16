@@ -34,11 +34,17 @@ public final class CatalogService {
     private final CatalogStore store;
     private final Clock clock;
     private final List<CatalogChangeListener> listeners = new CopyOnWriteArrayList<>();
+    private volatile java.util.function.BooleanSupplier rootNavigations = () -> false;
 
     public CatalogService(SnapshotHolder holder, CatalogStore store, Clock clock) {
         this.holder = holder;
         this.store = store;
         this.clock = clock;
+    }
+
+    /** Whether library roots list configured navigations (their whole-library containers then follow every change). */
+    public void rootNavigations(java.util.function.BooleanSupplier configured) {
+        this.rootNavigations = configured;
     }
 
     public SnapshotHolder holder() {
@@ -61,7 +67,7 @@ public final class CatalogService {
      */
     public synchronized Set<String> commit(Snapshot candidate) {
         Snapshot old = holder.current();
-        Set<String> changed = SnapshotDiff.changedContainers(old, candidate);
+        Set<String> changed = SnapshotDiff.changedContainers(old, candidate, rootNavigations.getAsBoolean());
         if (changed.isEmpty()) {
             // nothing DLNA-visible changed: ids stay, but the candidate may still differ (unsupported files,
             // directory mtimes) and the last-scan time moves, so it is installed and persisted when different
@@ -88,6 +94,28 @@ public final class CatalogService {
             }
         }
         return changed;
+    }
+
+    /**
+     * Announces a change that is not a content change (for example edited navigations): bumps the SystemUpdateID
+     * and the UpdateIDs of {@code containerKeys}, persists and notifies the listeners.
+     */
+    public synchronized void touch(Set<String> containerKeys) {
+        Snapshot old = holder.current();
+        long next = old.updateId() + 1;
+        Map<String, Long> ids = new HashMap<>(old.containerUpdateIds());
+        containerKeys.forEach(k -> ids.put(k, next));
+        Snapshot fresh = old.withUpdates(next, old.scannedAt(), ids);
+        holder.commit(fresh);
+        store.save(fresh);
+        ChangeSet event = new ChangeSet(next, containerKeys);
+        for (CatalogChangeListener l : listeners) {
+            try {
+                l.changed(event);
+            } catch (RuntimeException e) {
+                LOG.warning("Change listener failed: " + e);
+            }
+        }
     }
 
     /**

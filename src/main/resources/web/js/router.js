@@ -10,8 +10,10 @@ import { SettingsPage } from './pages/settings.js';
 import { MetadataPage } from './pages/metadata.js';
 import { ListJsonPage } from './pages/list-json.js';
 import { PlaylistsPage, PlaylistPage } from './pages/playlists.js';
+import { NavigationsPage } from './pages/navigations.js';
+import { LyricsPage } from './pages/lyrics.js';
 import { AdminPage } from './pages/admin.js';
-import { HomePage, FoldersPage, GroupsPage, GroupDetailPage, SongsPage, RecentPage, SearchPage } from './pages/browse.js';
+import { HomePage, FoldersPage, GroupsPage, GroupDetailPage, NavigationPage, SongsPage, RecentPage, SearchPage } from './pages/browse.js';
 
 const keyed = { keyed: true };   // remount the page when the query changes (App uses meta.keyed)
 
@@ -23,6 +25,7 @@ export const routes = [
   { path: '/artists', component: GroupsPage, props: { view: 'artists' } },
   { path: '/genres', component: GroupsPage, props: { view: 'genres' } },
   { path: '/:view(albums|artists|genres)/:id', component: GroupDetailPage, meta: keyed },
+  { path: '/nav/:name/:id?', component: NavigationPage, meta: keyed },
   { path: '/songs', component: SongsPage },
   { path: '/recent', component: RecentPage },
   { path: '/search', component: SearchPage, meta: keyed },
@@ -38,6 +41,8 @@ export const routes = [
   { path: '/list-json', component: ListJsonPage, meta: { admin: true } },
   { path: '/sections', component: ListJsonPage, meta: { admin: true } },
   { path: '/playlists', component: PlaylistsPage, meta: { admin: true } },
+  { path: '/navigations', component: NavigationsPage, meta: { admin: true } },
+  { path: '/lyrics', component: LyricsPage, meta: { admin: true, keyed: true } },
   { path: '/playlists/:key', component: PlaylistPage, meta: { admin: true } },
   { path: '/admin', component: AdminPage, meta: { admin: true } }
 ];

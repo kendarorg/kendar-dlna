@@ -137,6 +137,9 @@ Unknown keys are ignored when reading and preserved when the UI saves a valid fi
 | `views` | array of `album` `artist` `genre` `title` `composer` | `[]` | other value: file invalid; duplicates removed | Adds `[Albums]`, `[Artists]`, `[Genres]`, `[Titles]`, `[Composers]` in this order |
 | `keepWholeFiles` | boolean | `false` | not a boolean: file invalid | Keeps the whole audio file listed next to the virtual album that a cue sheet / chapters split it into (see [Cue sheets and chapters](#cue-sheets-and-chapters-virtual-albums)). Editable in the web UI: Directory settings, fieldset "Cue sheets and chapters", checkbox "Keep the whole files listed" (saving without the field never drops a stored `true`) |
 | `bucketThreshold` | integer | none (use `views.bucketThreshold`, 500) | not an integer >= 1: file invalid | Artists and Titles views of this directory with more entries than this are split into `A`-`Z`/`#` containers. Editable in the web UI: Directory settings, fieldset "Virtual containers", field "Group Artists and Titles by letter above N entries" (empty = server default) |
+| `subitems` | integer | none (inherit, then `views.subitems`, 50) | not an integer >= 1: file invalid | Letter ranges: with a name-sorted `sort` (`filename` or `title`) the sub-directories, and separately the tracks, are listed through range containers ("A-C", "D-Ha") when there are more than this. Inherited by sub-directories. Folders come first, each kind is grouped only when it alone exceeds the limit; `[Random]`, `[Recently added]`, views and navigations stay outside the ranges |
+| `ranges` | integer | none (inherit, then `views.ranges`, 10) | not an integer >= 2: file invalid | The most range containers made |
+| `navigations` | array of names | none (inherit) | not an array of non-blank strings: file invalid | The configured navigations this directory lists, by name (case-insensitive; unknown names are ignored). Unset: inherited from the parent directory; unset everywhere, a library root lists every configured navigation and other directories none. `[]` lists none |
 
 Album overlay rules: non-null `album.*` fields win over the tags **in all output** (DIDL, views, search); per-track
 fields (title, track number, artist, composer) always come from the tags. A directory is **out of sync** when an
@@ -244,9 +247,56 @@ Per directory, over its whole subtree, enabled by `random`, `recent`, `views`. F
 
 Whole-library variants: put the setting on the root directory. The admin page lists live Random N snapshots.
 
+### Lyrics
+
+* **What a track already has** (no network, shown to every signed-in user in the web player: full-screen player, tab
+  *Lyrics*; synced lines follow the playback position and a click on a line seeks): a sidecar `name.lrc` (synced) or
+  `name.txt` next to the audio file, the karaoke lyric events of a `.kar` / MIDI file, or the lyrics tag of the audio file
+  (ID3 `USLT`, Vorbis `LYRICS`, MP4). In that order; UTF-8 first, then windows-1252.
+* **Online lookup** (admin, off by default, see `lyrics.*` in [configuration](configuration.md)): *Find lyrics* on a track
+  row of the Library admin, or *Find lyrics for the folder* on a directory. The provider is asked with artist, title, album
+  and duration (LRCLIB: exact match, then a search); synced lyrics are preferred over plain ones. The result is only
+  proposed: you edit and **save** it, and it is written as a sidecar `.lrc` (time tags present) or `.txt`; the audio file is
+  never modified. Lyrics are copyrighted: use the lookup for your own files, personal use.
+* **Folder job**: one request at a time (rate limited), results to review per track (`has lyrics`, `matched`,
+  `ambiguous` = several different candidates, the first is proposed, `not found`, `failed`); you tick the tracks to save and
+  press *Save the selected*. Tracks that already have lyrics are skipped unless you ask for them.
+
+### Navigations
+
+A **navigation** groups the library (or a directory's subtree) by an ordered list of tags, one container level per tag,
+with the tracks at the end. They are defined in `config.json` (`navigations`, see [configuration](configuration.md)) and
+edited live in the admin page *Navigations*:
+
+```json
+"navigations": [
+  { "name": "Album",   "index": ["album", "title"] },
+  { "name": "Artists", "index": ["artist", "album", "title"], "subitems": 100, "ranges": 20 },
+  { "name": "Genres",  "index": ["genre", "artist", "album", "title"] },
+  { "name": "Songs",   "index": ["title"] }
+]
+```
+
+* **Levels**: `title` is the list of tracks and ends the chain. Tags: `title artist album albumArtist genre year composer`;
+  **virtual tags** computed from the file (nothing stored): `type` (`analog` = recorded audio, `digital` = MIDI / ABC),
+  `format` (`MP3`, `FLAC`, `MIDI`, ...), `bitrate` (`n/a` for MIDI/ABC, `lossless`, `under 128 kbps`, `128 kbps`,
+  `160-224 kbps`, `256 kbps`, `320 kbps`); and the configured `extraTags`. Missing values go to "Unknown <tag>". An `artist`,
+  `albumArtist` or `composer` level followed by `album` gets an "All tracks" entry; albums are told apart by
+  (album artist, album title), multi-value artists / genres / composers list a track under each value.
+* **Ranges**: a level (or track list) with more entries than `subitems` is split into at most `ranges` containers.
+  Global defaults in `views.subitems` / `views.ranges`; a navigation can override both.
+* **Where they appear** (DLNA and web): at the root of every library root (the whole library) and inside every directory
+  that lists them (`navigations` in its `settings.json`, inherited by sub-directories; scoped to that subtree). With
+  navigations configured, the web sidebar shows them instead of the fixed Albums / Artists / Genres / Songs pages. The old
+  `views` of `settings.json` keep working unchanged.
+* **Editing**: *Navigations* in the admin sidebar (or `PUT /admin/settings/navigations`) saves into `config.json`
+  (`config.json.bak` keeps the previous file) and applies at once: the trees are rebuilt and the root containers get a new
+  UpdateID. The page also lists the extra tags found in the library (`tags.json`) so you can pick the ones to use.
+
 ## Playlists
 
 * One JSON file per playlist in `library.playlistsDir`: `<key>.json`, key = file name without `.json`.
+* **Playlist files in the library**: every `.m3u`, `.m3u8` and `.pls` file found in any root (hidden directories skipped) becomes a read-only system playlist named after the file (key `sys.<id>`). Entries are resolved relative to the playlist file or as absolute paths inside a root (`` accepted, `file://` URLs accepted, stream URLs ignored); UTF-8 is tried first, then windows-1252. Only entries that exist in the library are shown; a playlist with none is hidden. They appear next to the JSON playlists for DLNA, the web player and the admin (badge "file", no edit actions); they are rebuilt at every scan.
 
 ```json
 { "name": "Road trip", "songs": ["Music/Rock/Album/01 Song.flac", "Music/Pop/x.mp3"] }
@@ -415,7 +465,7 @@ keyboard shortcuts, sign out); a player bar sits at the bottom; on phones the si
 | **Heart** | A heart button on every track row, in the player bar, the full-screen player and the queue toggles the favorite; the state comes from a cache loaded at sign-in |
 | **Now playing panel** (queue button, `Q`) | The queue with total time; click to jump; per row move to top / up / down / bottom and remove; Clear; **Save as playlist** (name pre-filled "Now playing <date>") |
 | **Full-screen player** (cover or button, `F`) | Large cover, seek bar, controls, next tracks, **Info** tab with all metadata |
-| **Player bar** | Cover, title/artist, shuffle, previous (restarts after 3 s), play/pause, next, repeat off / all / one, seek bar with times, volume and mute, queue, full-screen. Shuffle, repeat and volume are remembered per browser |
+| **Player bar** | Cover, title/artist, shuffle, previous (restarts after 3 s), play/pause, next, repeat off / all / one, seek bar with times, volume and mute, **playback speed slider** (-2..+2 = 0.5x, 0.75x, 1x, 1.5x, 2x, pitch preserved, click the label to reset; also in the full-screen player), queue, full-screen. Shuffle, repeat, volume and speed are remembered per browser. The browser tab title shows "artist - title" of the current track. On desktop the navigation sidebar and the library directory tree can be resized by dragging the handle (arrow keys also work, double-click resets) |
 
 **Audio engine.** Two `<audio>` elements: one plays, the other preloads the next track when it is played natively. At sign-in
 the browser tests `canPlayType` for MP3, OGG Vorbis, Opus, FLAC and WAV and posts the list to `POST /api/v1/stream/formats`
@@ -474,14 +524,14 @@ only); other users are sent to the home page (and the API refuses them anyway).
 |---|---|
 | **Sign in** (`#/login`) | User name and password. Shows the lockout message on `429` |
 | **Change password** (`#/password`) | Current + new + repeat (min 10 characters). Forced (and the only reachable page) while `mustChange` |
-| **Library** (`#/library?p=<path>`) | Directory tree on the left, current directory on the right: breadcrumbs, front/rear cover, counts, sort mode, badges (Random N, Recently added N, enabled views, "out of sync"), settings error banner, sub-directories, and a track table (disc.track, title with file name, artist, album, year, format with "read-only"/"limited" badges, length, bitrate, "sync" badge, Edit link). Buttons: **Directory settings**, **Edit tags** (if the directory has direct tracks), **Rescan** (this subtree) with the **Re-read all tags** tick box, **Reload** |
+| **Library** (`#/library?p=<path>`) | Directory tree on the left, current directory on the right: breadcrumbs, front/rear cover, counts, sort mode, badges (Random N, Recently added N, enabled views, "out of sync"), settings error banner, sub-directories, and a track table (disc.track, title with file name, artist, album, year, format with "read-only"/"limited" badges, length, bitrate, "sync" badge, Edit link). Buttons: **Directory settings**, **Edit tags** (if the directory has direct tracks), **Rescan** (this subtree) with the **Re-read all tags** tick box, **Reload**, a **Boxes / List** switch for the sub-directories (remembered per browser), **Delete directory** (shows how many songs, other files and sub-folders go, and needs "I CONSENT" typed in capitals; the directory is moved to `.deleted`) |
 | **Directory settings** (`#/settings?p=`) | Sections *Name* (display name; directory on disk shown read-only), *Order* (sort mode; for `explicit` a reorderable list of children with up/down/top/bottom, "directory" and "not found" badges, remove-missing), *Album* (title, album artist, year, genre, disc number, disc total), *Virtual containers* (Random N, Recently added N, view checkboxes with reordering), Save/Cancel (changes tracked; "Unsaved changes"). *Sync with tags*: **Apply to tags** opens a file list (nothing pre-selected; only formats that can hold album tags are selectable, others listed disabled as "no album tag"/"read-only"; Select all / None); the button "Write the tags of N files" writes the overlay into exactly those files and reports written/failed/skipped. **From tags** is a **preview**: it fills the Album form from the tracks' tags (nothing saved until you press Save); if the tracks disagree a conflict table (field, value, files) is shown and nothing is filled. Both buttons are disabled while there are unsaved changes. *Pictures*: upload `front.jpg` / `rear.jpg` with preview |
-| **Metadata editor** (`#/metadata?p=&t=`) | Track list with checkboxes (Opus and raw AAC rows disabled), form with the ten tag fields. One file selected: the form shows its tags and only changed fields are sent (an emptied field clears the tag). Several files selected (batch): each field shows the value **all selected files share** (trimmed, case-sensitive; `0` counts as empty for numbers), or an empty box with the placeholder "(keep)" when they differ. Only fields you touched **and** that differ from what was shown are written to all selected files; deleting a pre-filled value, or ticking "clear", clears the tag in all files; emptying a field that showed nothing means "keep". Selection changes inside a batch keep your typed text. Only files whose format can store a field take part in the common value of that field. **MIDI**: album, genre, composer, track no., disc no. and disc total are disabled when only MIDI files are selected, and silently skipped for MIDI files in a mixed batch (a note explains it); MIDI keeps title, artist, year. Results of a batch list per-file failures |
+| **Metadata editor** (`#/metadata?p=&t=`) | Track list with checkboxes (Opus and raw AAC rows disabled), form with the ten tag fields. One file selected: the form shows its tags and only changed fields are sent (an emptied field clears the tag). Several files selected (batch): each field shows the value **all selected files share** (trimmed, case-sensitive; `0` counts as empty for numbers), or an empty box with the placeholder "(keep)" when they differ. Only fields you touched **and** that differ from what was shown are written to all selected files; deleting a pre-filled value, or ticking "clear", clears the tag in all files; emptying a field that showed nothing means "keep". Selection changes inside a batch keep your typed text. Only files whose format can store a field take part in the common value of that field. **MIDI**: album, genre, composer, track no., disc no. and disc total are disabled when only MIDI files are selected, and silently skipped for MIDI files in a mixed batch (a note explains it); MIDI keeps title, artist, year. Results of a batch list per-file failures. **Apply to: this folder and all its subfolders** switches the form to a tree edit: only the fields you fill (or tick "clear") are written to every file below the folder that can hold them; a dialog shows the count (and what is skipped) and asks for "I CONSENT"; the edit runs as a background job with live progress, and the old values are logged to `tag-changes.log` in the data directory |
 | **Playlists** (`#/playlists`) | Create (name), table with song count and broken count, delete with confirmation |
 | **Playlist** (`#/playlists/<key>`) | Rename; ordered song list with move buttons, remove, "Fix" for broken entries (opens a search picker); Save/Cancel of the song list; **Add songs** with a search picker (tracks only) |
 | **Users** (`#/admin/users`) | Table of accounts (role, status: active / invited / must change password / disabled, allowed roots, download, last login). **New user**: user name (2-64 of letters, digits `. _ - @`, validated before sending), display name, role, **allowed roots as check boxes with the main root preselected** (admins always see every root), download permission, and how the user gets access: **invite link** (shown once with Copy and the days left; one-time, 7 days) or a **temporary password** (shown once, must be changed at first sign-in). Per user: Edit (name, role, roots, download), Disable / Enable (ends sessions), **Reset (invite)** / New invite, Temporary password, Delete (confirmation; removes their data). Your own row cannot be disabled, deleted or reset (the API refuses it as well) |
 | **Shared playlists** (`#/admin/shared-playlists`) | Moderation: every shared playlist with owner, track count and update time; **Make private** or **Delete**, each with a confirmation. Private playlists are not listed |
-| **Admin** (`#/admin`) | Library scan (live status refreshed every 3 s, rescan whole library or a `root/directory`, "Re-read all tags", last-scan report, scan errors), invalid `settings.json` list (links to the settings page), unsupported files (path, size, reason), active streams (client, track, original/transcoded form, since) with cache size and prefetch jobs, Random N snapshots (directory, client, N, tracks, last activity, streams), version (version, commit, build time, Java, start time) |
+| **Admin** (`#/admin`) | Library scan (live status refreshed every 3 s, rescan whole library or a `root/directory`, "Re-read all tags", last-scan report, scan errors), invalid `settings.json` list (links to the settings page), unsupported files (path, size, reason), active streams (client, track, original/transcoded form, since) with cache size and prefetch jobs, Random N snapshots (directory, client, N, tracks, last activity, streams, **Save as playlist** into a global playlist), version (version, commit, build time, Java, start time) |
 
 ## Security and password lifecycle
 

@@ -62,6 +62,7 @@ public final class AdminApi {
     private final UserResources userAdmin;
     private final StreamResources stream;
     private final PersonalResources personal;
+    private final LyricsResources lyrics;
 
     /** With a default library query facade over the catalog (no artwork service). */
     public AdminApi(AdminServices services, IdentityService identity) {
@@ -83,6 +84,7 @@ public final class AdminApi {
         this.playlists = new PlaylistResources(services);
         this.ops = new OpsResources(services);
         this.settings = new SettingsResources(services);
+        this.lyrics = new LyricsResources(services.lyrics());
         this.userAdmin = new UserResources(identity);
         this.personal = new PersonalResources(new org.kendar.dlna.personal.PersonalService(identity,
                 services.catalog()::current, services.clock()));
@@ -163,7 +165,8 @@ public final class AdminApi {
         }
         requireCsrf(req, caller.session());
         return switch (seg.get(0)) {
-            case "library" -> libraryQuery.handle(req, rest, caller.user());
+            case "library" -> rest.size() == 1 && rest.get(0).equals("lyrics") ? lyrics.user(req, caller.user())
+                    : libraryQuery.handle(req, rest, caller.user());
             case "shared" -> personal.shared(req, rest, caller.user());
             case "stream" -> stream == null ? null : stream.handle(req, rest, caller.user(), caller.session().token());
             case "admin" -> {
@@ -193,6 +196,7 @@ public final class AdminApi {
             case "playlists" -> playlists.handle(req, rest);
             case "shared-playlists" -> personal.moderation(req, rest);
             case "settings" -> settings.handle(req, rest);
+            case "lyrics" -> lyrics.admin(req, rest);
             default -> ops.handle(req, seg);
         };
     }

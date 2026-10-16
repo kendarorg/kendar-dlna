@@ -1,4 +1,5 @@
-/* Playlists: list/create/delete, and the editor (rename, add via search, reorder, remove, fix broken paths). */
+      <div v-if="!pl.system" class="row">
+        <button type="button" class="primary" :disabled="busy || !dirty" @click="save">/* Playlists: list/create/delete, and the editor (rename, add via search, reorder, remove, fix broken paths). */
 import { Api } from '../api.js';
 import { moveItem } from '../core/list.js';
 
@@ -38,7 +39,7 @@ export const PlaylistsPage = {
         <thead><tr><th>Name</th><th>Songs</th><th>Broken</th><th></th></tr></thead>
         <tbody>
           <tr v-for="p in lists" :key="p.key">
-            <td><router-link :to="'/playlists/' + encodeURIComponent(p.key)">{{ p.name }}</router-link></td>
+            <td><router-link :to="'/playlists/' + encodeURIComponent(p.key)">{{ p.name }}</router-link> <span v-if="p.system" class="badge" title="Read from a .m3u/.m3u8/.pls file in the library">file</span></td>
             <td>{{ p.count }}</td>
             <td><span v-if="p.broken" class="badge bad">{{ p.broken }}</span></td>
             <td class="right">
@@ -47,7 +48,7 @@ export const PlaylistsPage = {
                 <button type="button" class="danger" :disabled="busy" @click="remove(p.key)">Delete</button>
                 <button type="button" @click="confirmDelete = null">Keep</button>
               </template>
-              <button v-else type="button" @click="confirmDelete = p.key">Delete</button>
+              <button v-else-if="!p.system" type="button" @click="confirmDelete = p.key">Delete</button>
             </td>
           </tr>
         </tbody>
@@ -118,7 +119,8 @@ export const PlaylistPage = {
       <h1>{{ pl.name }}</h1>
       <banner :message="error"></banner>
       <banner :message="info" kind="ok"></banner>
-      <form class="row" @submit.prevent="rename">
+      <p v-if="pl.system" class="banner info">This playlist is read from a playlist file in the library (.m3u, .m3u8 or .pls) and is read-only. Only the files that exist in the library are listed.</p>
+      <form v-if="!pl.system" class="row" @submit.prevent="rename">
         <input v-model="name" aria-label="Playlist name" maxlength="200">
         <button type="submit" :disabled="busy || !name.trim() || name.trim() === pl.name">Rename</button>
       </form>
@@ -126,14 +128,14 @@ export const PlaylistPage = {
       <p v-if="broken" class="banner info">{{ broken }} entries cannot be played (file missing or unsupported). They are skipped
         by the DLNA clients. Use "Fix" to point them to the new file.</p>
       <p v-if="!entries.length" class="muted">The playlist is empty. Add songs below.</p>
-      <ol class="order songs">
+      <ol class="order songs" :class="{ readonly: pl.system }">
         <li v-for="(e, i) in entries" :key="i + e.path" :class="{ missing: e.status !== 'ok' }">
           <div class="row">
-            <move-buttons :index="i" :count="entries.length" @move="d => move(i, d)"></move-buttons>
+            <move-buttons v-if="!pl.system" :index="i" :count="entries.length" @move="d => move(i, d)"></move-buttons>
             <span class="grow">{{ describe(e) }}<div class="muted small">{{ e.path }}</div></span>
             <span v-if="e.status !== 'ok'" class="badge bad">{{ e.status }}</span>
-            <button v-if="e.status !== 'ok'" type="button" @click="startFix(i)">{{ fixing === i ? 'Cancel fix' : 'Fix' }}</button>
-            <button type="button" class="icon" title="Remove from the playlist" @click="remove(i)">&times;</button>
+            <button v-if="e.status !== 'ok' && !pl.system" type="button" @click="startFix(i)">{{ fixing === i ? 'Cancel fix' : 'Fix' }}</button>
+            <button v-if="!pl.system" type="button" class="icon" title="Remove from the playlist" @click="remove(i)">&times;</button>
           </div>
           <div v-if="fixing === i" class="fixbox">
             <p>Find the new file for <code>{{ e.path }}</code>:</p>
@@ -147,8 +149,10 @@ export const PlaylistPage = {
         <span v-if="dirty" class="muted">Unsaved changes</span>
       </div>
 
-      <h2>Add songs</h2>
-      <search-picker kind="track" action-label="Add" @pick="add"></search-picker>
+      <template v-if="!pl.system">
+        <h2>Add songs</h2>
+        <search-picker kind="track" action-label="Add" @pick="add"></search-picker>
+      </template>
     </section>
     <banner v-else :message="error"></banner>`
 };

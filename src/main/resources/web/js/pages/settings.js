@@ -43,6 +43,10 @@ function settingsForm(folder) {
     hidden: !!s.hidden,
     ignore: (s.ignore || []).join('\n'),
     bucketThreshold: s.bucketThreshold == null ? '' : s.bucketThreshold,
+    subitems: s.subitems == null ? '' : s.subitems,
+    ranges: s.ranges == null ? '' : s.ranges,
+    navMode: s.navigations == null ? 'inherit' : 'list',
+    navList: (s.navigations || []).slice(),
     views: s.views.slice(),
     storedOrder: s.order.slice()
   };
@@ -72,6 +76,9 @@ function settingsBody(form) {
     hidden: !!form.hidden,
     ignore: form.ignore.split('\n').map(l => l.trim()).filter(l => l),
     bucketThreshold: numberOrNull(form.bucketThreshold),
+    subitems: numberOrNull(form.subitems),
+    ranges: numberOrNull(form.ranges),
+    navigations: form.navMode === 'inherit' ? null : form.navList.slice(),
     views: form.views
   };
 }
@@ -82,7 +89,7 @@ export const SettingsPage = {
     return {
       folder: null, form: null, original: '', error: '', info: '', busy: false,
       conflicts: null, confirmApply: false, applySelected: [], applyResult: null,
-      sortModes: SORT_MODES, allViews: ALL_VIEWS, labels: VIEW_LABELS, artVersion: Date.now()
+      sortModes: SORT_MODES, allViews: ALL_VIEWS, labels: VIEW_LABELS, artVersion: Date.now(), navNames: []
     };
   },
   computed: {
@@ -99,6 +106,7 @@ export const SettingsPage = {
       this.error = ''; this.conflicts = null; this.applyResult = null; this.confirmApply = false; this.applySelected = [];
       try {
         this.folder = await Api.folder(this.path);
+        try { this.navNames = (await Api.navigations()).navigations.map(n => n.name); } catch (e) { this.navNames = []; }
         this.form = settingsForm(this.folder);
         this.original = JSON.stringify(this.form);
         this.artVersion = Date.now();
@@ -118,6 +126,10 @@ export const SettingsPage = {
           || Number.isNaN(body.bucketThreshold) || (body.bucketThreshold !== null && body.bucketThreshold < 1)) {
           throw new Error('Year, disc number, disc total, Random N, Recently added and the letter grouping limit must be whole numbers (the limit at least 1).');
         }
+        if (Number.isNaN(body.subitems) || (body.subitems !== null && body.subitems < 1)
+          || Number.isNaN(body.ranges) || (body.ranges !== null && body.ranges < 2)) {
+          throw new Error('Letter ranges: "more than" must be a whole number of at least 1 and "at most" a whole number of at least 2 (or empty to inherit).');
+        }
         await Api.saveSettings(this.path, body);
         await this.load();
         this.info = 'Settings saved.';
@@ -131,6 +143,10 @@ export const SettingsPage = {
       if (i >= 0) this.form.views.splice(i, 1); else this.form.views.push(v);
     },
     moveView(i, direction) { this.form.views = moveItem(this.form.views, i, direction); },
+    toggleNav(n) {
+      const i = this.form.navList.indexOf(n);
+      if (i >= 0) this.form.navList.splice(i, 1); else this.form.navList.push(n);
+    },
     /** Opens the file list; nothing is pre-selected, every file to be rewritten must be ticked. */
     openApply() { this.confirmApply = true; this.applySelected = []; this.applyResult = null; },
     closeApply() { this.confirmApply = false; this.applySelected = []; },
@@ -268,6 +284,29 @@ export const SettingsPage = {
             <input type="number" min="1" v-model="form.bucketThreshold" class="short" id="bucket-threshold" :placeholder="$t('settings.bucketThreshold.default')">
           </label>
           <p class="muted">{{ $t('settings.bucketThreshold.help') }}</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Letter ranges and navigations</legend>
+          <p class="muted">With a name sort (file name or title), more than <em>N</em> sub-folders (and, separately, more than N tracks)
+            are listed through at most <em>M</em> range containers such as "A-C". Empty = inherit from the parent folder, then the server default.</p>
+          <div class="row">
+            <label>More than <input type="number" min="1" v-model="form.subitems" class="short" placeholder="inherit" id="subitems"> entries</label>
+            <label>make at most <input type="number" min="2" v-model="form.ranges" class="short" placeholder="inherit" id="ranges"> ranges</label>
+          </div>
+          <p class="muted">Navigations listed in this folder (configured on the Navigations page). Library roots list all of them
+            unless you choose otherwise; sub-folders list none unless they, or a parent folder, say so.</p>
+          <div class="row">
+            <label class="inline"><input type="radio" value="inherit" v-model="form.navMode"> inherit from the parent folder</label>
+            <label class="inline"><input type="radio" value="list" v-model="form.navMode"> list exactly these</label>
+          </div>
+          <ul v-if="form.navMode === 'list'" class="plain">
+            <li v-for="n in navNames" :key="n" class="row">
+              <input type="checkbox" :id="'nav-' + n" :checked="form.navList.includes(n)" @change="toggleNav(n)">
+              <label :for="'nav-' + n" class="grow">{{ n }}</label>
+            </li>
+            <li v-if="!navNames.length" class="muted">No navigations are configured yet.</li>
+          </ul>
         </fieldset>
 
         <div class="row">

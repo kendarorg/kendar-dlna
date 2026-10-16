@@ -10,13 +10,18 @@ import org.kendar.dlna.clients.ClientsConfig;
 /** Typed view of {@code config.json}. Sections for later milestones are ignored for now. */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AppConfig(Library library, Network network, Server server, Random random, Views views,
-        Scan scan, Transcode transcode, ClientsConfig clients) {
+        Scan scan, Transcode transcode, ClientsConfig clients, java.util.List<org.kendar.dlna.catalog.Navigation> navigations,
+        java.util.List<String> extraTags, Lyrics lyrics) {
 
     public static final String DEFAULT_FRIENDLY_NAME = "Kendar DLNA";
     public static final int DEFAULT_PORT = 8200;
 
     public static final int DEFAULT_RANDOM_TTL_MINUTES = 30;
     public static final int DEFAULT_BUCKET_THRESHOLD = 500;
+    /** Letter ranges: a directory or navigation level with more entries than this is split ... */
+    public static final int DEFAULT_SUBITEMS = 50;
+    /** ... into at most this many range containers. */
+    public static final int DEFAULT_RANGES = 10;
 
     public static final int DEFAULT_MP3_BITRATE = 320;
     public static final int DEFAULT_CACHE_MB = 2048;
@@ -26,11 +31,17 @@ public record AppConfig(Library library, Network network, Server server, Random 
     public static final int DEFAULT_CATCH_UP_HOURS = 12;
 
     public AppConfig(Library library, Network network, Server server) {
-        this(library, network, server, null, null, null, null, null);
+        this(library, network, server, null, null, null, null, null, null, null, null);
     }
 
     public AppConfig(Library library, Network network, Server server, Random random, Views views) {
-        this(library, network, server, random, views, null, null, null);
+        this(library, network, server, random, views, null, null, null, null, null, null);
+    }
+
+    /** Without navigations and extra tags. */
+    public AppConfig(Library library, Network network, Server server, Random random, Views views, Scan scan,
+            Transcode transcode, ClientsConfig clients) {
+        this(library, network, server, random, views, scan, transcode, clients, null, null, null);
     }
 
     public AppConfig {
@@ -43,6 +54,9 @@ public record AppConfig(Library library, Network network, Server server, Random 
         transcode = transcode == null ? new Transcode(null, null, null, null, null, null, null, null, null)
                 : transcode;
         clients = clients == null ? ClientsConfig.defaults() : clients;
+        navigations = navigations == null ? java.util.List.of() : java.util.List.copyOf(navigations);
+        extraTags = extraTags == null ? java.util.List.of() : java.util.List.copyOf(extraTags);
+        lyrics = lyrics == null ? new Lyrics(null, null, null, null) : lyrics;
     }
 
     /** Roots map name to a path (inside {@code /music} in Docker); {@code mainRoot} = default root of new users (default: the first). */
@@ -102,11 +116,42 @@ public record AppConfig(Library library, Network network, Server server, Random 
         }
     }
 
-    /** Views settings: lists longer than {@code bucketThreshold} are split into A-Z / # containers. */
+    /**
+     * Views settings: lists of the legacy views longer than {@code bucketThreshold} are split into A-Z / #
+     * containers. {@code subitems} / {@code ranges} are the global defaults of the letter ranges (directories and
+     * navigations): more than {@code subitems} entries are split into at most {@code ranges} containers.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Views(Integer bucketThreshold) {
+    public record Views(Integer bucketThreshold, Integer subitems, Integer ranges) {
+        public Views(Integer bucketThreshold) {
+            this(bucketThreshold, null, null);
+        }
+
         public Views {
             bucketThreshold = bucketThreshold == null ? DEFAULT_BUCKET_THRESHOLD : bucketThreshold;
+            subitems = subitems == null ? DEFAULT_SUBITEMS : subitems;
+            ranges = ranges == null ? DEFAULT_RANGES : ranges;
+        }
+    }
+
+    /**
+     * Lyrics: {@code provider} is the id of the online provider used to look lyrics up ({@code none} = off, the
+     * default; {@code lrclib} is built in), {@code minIntervalMillis} the least time between two calls to it,
+     * {@code timeoutSeconds} the request timeout. {@code providers} holds the settings of each provider by id
+     * (for {@code lrclib}: {@code baseUrl}).
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Lyrics(String provider, Integer minIntervalMillis, Integer timeoutSeconds,
+            Map<String, Map<String, String>> providers) {
+        public Lyrics {
+            provider = provider == null || provider.isBlank() ? "none" : provider.strip().toLowerCase(java.util.Locale.ROOT);
+            minIntervalMillis = minIntervalMillis == null ? 1100 : minIntervalMillis;
+            timeoutSeconds = timeoutSeconds == null ? 10 : timeoutSeconds;
+            providers = providers == null ? Map.of() : Map.copyOf(providers);
+        }
+
+        public boolean enabled() {
+            return !provider.equals("none");
         }
     }
 

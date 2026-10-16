@@ -53,6 +53,8 @@ public final class LibraryQuery {
 
     public static final String BASE = "/api/v1/library";
     public static final int MAX_RANDOM = 1000;
+    /** The id of the top node of a navigation in {@code /nav/{name}/{id}} (an empty segment cannot be addressed). */
+    public static final String NAV_ROOT = "~";
     public static final int DEFAULT_RANDOM = 50;
     static final Set<String> DEFAULT_FORMATS = Set.of("mp3", "ogg", "flac", "wav", "opus");
 
@@ -394,6 +396,105 @@ public final class LibraryQuery {
         }
         m.put("art", trackArt(snap, n.artTrack()));
         return m;
+    }
+
+    // ---- configured navigations (whole library of the caller) ----
+
+    /** {@code GET /navigations}: the configured navigations, in order (the web app builds its pages from this). */
+    public Map<String, Object> navigations() {
+        List<Object> items = new ArrayList<>();
+        for (org.kendar.dlna.catalog.Navigation n : views.navigations().state().navigations()) {
+            items.add(obj("name", n.name(), "key", n.key(), "index", n.index()));
+        }
+        return obj("items", items, "version", views.navigations().state().version());
+    }
+
+    /**
+     * {@code GET /nav/{name}[?node=<id>]}: one node of a navigation over the caller's roots. {@code node}
+     * is the id returned by the parent listing (empty = the navigation itself). The answer has the node, its
+     * ancestors ({@code path}) and either its child containers ({@code groups}) or its tracks ({@code tracks}),
+     * paged with {@code offset} / {@code limit}.
+     */
+    public Map<String, Object> navigation(User user, String name, Map<String, String> q) {
+        return navigation(user, name, q.getOrDefault("node", ""), false, q);
+    }
+
+    /** Every track below a node, in tree order, without the "All tracks" duplicates. */
+    private static void allTracks(ViewNode n, List<Track> out) {
+        out.addAll(n.tracks());
+        for (ViewNode c : n.children()) {
+            if (c.type() != ViewNode.Type.ALL_TRACKS) {
+                allTracks(c, out);
+            }
+        }
+    }
+
+    /**
+     * {@code GET /nav/{name}[/{id}[/tracks]]}: like {@link #navigation(User, String, Map)}; with {@code tracksOnly}
+     * the tracks of the whole subtree of the node (to play it).
+     */
+    public Map<String, Object> navigation(User user, String nodeName, String nodeId, boolean tracksOnly,
+            Map<String, String> q) {
+        String name = nodeName;
+        String id = NAV_ROOT.equals(nodeId) ? "" : nodeId;
+        org.kendar.dlna.catalog.Navigation nav = views.navigations().state().byKey(name)
+                .or(() -> views.navigations().state().byName(name))
+                .orElseThrow(() -> QueryException.notFound("Unknown navigation: " + name));
+        Snapshot snap = catalog.get();
+        Set<String> roots = rootsOf(user, snap);
+        ViewNode root = views.libraryNavigation(snap, roots, nav, "").orElseThrow();
+        ViewNode n = views.libraryNavigation(snap, roots, nav, id)
+                .orElseThrow(() -> QueryException.notFound("Unknown " + name + " entry: " + id));
+        Paging p = Paging.of(q);
+        Map<String, Object> m = envelope(snap);
+        m.put("navigation", nav.name());
+        m.put("item", navItem(snap, nav, root, n));
+        m.put("node", m.get("item"));
+        List<Object> path = new ArrayList<>();
+        for (String pid = n.parentId(); pid != null; ) {
+            ViewNode parent = views.libraryNavigation(snap, roots, nav,
+                    pid.equals(root.id()) ? "" : pid.substring(root.id().length() + 1)).orElse(null);
+            if (parent == null) {
+                break;
+            }
+            path.add(0, navItem(snap, nav, root, parent));
+            pid = parent.parentId();
+        }
+        m.put("path", path);
+        if (tracksOnly) {
+            List<Track> all = new ArrayList<>();
+            allTracks(n, all);
+            return pageOf(m, "tracks", all.size(), p, trackJson(snap, p.slice(all), formats(q)));
+        }
+        if (!n.children().isEmpty()) {
+            List<Object> groups = new ArrayList<>();
+            for (ViewNode c : p.slice(n.children())) {
+                groups.add(navItem(snap, nav, root, c));
+            }
+            return pageOf(m, "groups", n.children().size(), p, groups);
+        }
+        return pageOf(m, "tracks", n.tracks().size(), p, trackJson(snap, p.slice(n.tracks()), formats(q)));
+    }
+
+    private Map<String, Object> navItem(Snapshot snap, org.kendar.dlna.catalog.Navigation nav, ViewNode root,
+            ViewNode n) {
+        String id = n.id().equals(root.id()) ? NAV_ROOT : n.id().substring(root.id().length() + 1);
+        int count = countTracks(n);
+        return obj("id", id, "view", "nav/" + nav.key(), "type", lower(n.type()), "title", n.title(), "artist",
+                n.artist(), "year", n.year(), "trackCount", count, "childCount", n.childCount(),
+                "art", trackArt(snap, n.artTrack()));
+    }
+    private static int countTracks(ViewNode n) {
+        if (n.type() == ViewNode.Type.ALL_TRACKS) {
+            return n.tracks().size();
+        }
+        int total = n.tracks().size();
+        for (ViewNode c : n.children()) {
+            if (c.type() != ViewNode.Type.ALL_TRACKS) {
+                total += countTracks(c);
+            }
+        }
+        return total;
     }
 
     // ---- tracks ----

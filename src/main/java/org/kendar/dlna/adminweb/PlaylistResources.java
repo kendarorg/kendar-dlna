@@ -54,7 +54,7 @@ final class PlaylistResources {
     private ApiResponse list() {
         List<Object> out = new ArrayList<>();
         for (ResolvedPlaylist p : svc.catalog().current().playlists()) {
-            out.add(Dto.obj("key", p.playlist().key(), "name", p.name(), "count", p.entries().size(),
+            out.add(Dto.obj("key", p.playlist().key(), "name", p.name(), "system", p.playlist().system(), "count", p.entries().size(),
                     "broken", p.brokenCount()));
         }
         return ApiResponse.ok(Dto.obj("playlists", out));
@@ -84,7 +84,8 @@ final class PlaylistResources {
             }
             entries.add(m);
         }
-        return Dto.obj("key", p.playlist().key(), "name", p.name(), "entries", entries, "broken", p.brokenCount());
+        return Dto.obj("key", p.playlist().key(), "name", p.name(), "system", p.playlist().system(), "entries", entries,
+                "broken", p.brokenCount());
     }
 
     /** Body: {@code name} (rename) and/or {@code songs} (the complete new order). */

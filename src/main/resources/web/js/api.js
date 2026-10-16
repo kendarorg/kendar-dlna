@@ -129,6 +129,13 @@ export const Api = {
   random(params) { return this.library('/random', params); },
   search(q, kind, params) { return this.library('/search', Object.assign({ q: q, kind: kind }, params)); },
   suggest(q, limit) { return this.library('/search/suggest', { q: q, limit: limit }); },
+  lyrics(path) { return this.library('/lyrics', { path: path }); },
+  lyricsStatus() { return this.get('/admin/lyrics/status'); },
+  lyricsLookup(path) { return this.post('/admin/lyrics/lookup', { path: path }); },
+  lyricsSave(path, text) { return this.post('/admin/lyrics/save', { path: path, text: text }); },
+  lyricsFolderStart(path, replaceExisting) { return this.post('/admin/lyrics/folder/start', { path: path, replaceExisting: !!replaceExisting }); },
+  lyricsFolderJob() { return this.get('/admin/lyrics/folder/job'); },
+  lyricsFolderApply(paths) { return this.post('/admin/lyrics/folder/apply', { paths: paths }); },
 
   /** Every track of a group item (album, artist, genre or an album below an artist). */
   async groupTracks(item) {
@@ -257,7 +264,11 @@ export const Api = {
   settingsImport(part, data) { return this.post('/admin/settings/' + part + '/upload', data); },
   uploadAudio(dir, file) { return this.request('POST', '/admin/folders/upload?' + this.q({ path: dir, name: file.name }), file, { raw: true }); },
   createDir(parent, name) { return this.post('/admin/folders/directory?' + this.q({ path: parent, name: name })); },
-  deleteDir(path, recursive) { return this.del('/admin/folders/directory?' + this.q({ path: path, recursive: recursive ? 'true' : 'false' })); },
+  deletePreview(path) { return this.get('/admin/folders/delete-preview?' + this.q({ path: path })); },
+  bulkTagsPreview(path, edit) { return this.post('/admin/folders/tags/preview', { path: path, edit: edit }); },
+  bulkTagsApply(path, edit, confirm, expectedFiles) { return this.post('/admin/folders/tags/apply', { path: path, edit: edit, confirm: confirm, expectedFiles: expectedFiles }); },
+  bulkTagsJob() { return this.get('/admin/folders/tags/job'); },
+  deleteDir(path, recursive, confirm) { return this.del('/admin/folders/directory?' + this.q({ path: path, recursive: recursive ? 'true' : 'false', confirm: confirm })); },
   deleteTrack(path) { return this.del('/admin/tracks?' + this.q({ path: path })); },
   renameTrack(path, name) { return this.post('/admin/tracks/rename?' + this.q({ path: path }), { name: name }); },
   saveTracks(paths, edit) { return this.post('/admin/tracks/batch', { paths: paths, edit: edit }); },
@@ -286,5 +297,8 @@ export const Api = {
   invalidSettings() { return this.get('/admin/invalid-settings'); },
   streams() { return this.get('/admin/streams'); },
   snapshots() { return this.get('/admin/snapshots'); },
+  navigations() { return this.get('/admin/settings/navigations'); },
+  saveNavigations(body) { return this.put('/admin/settings/navigations', body); },
+  exportSnapshot(context, name) { return this.post('/admin/snapshots/to-playlist', { context: context, name: name }); },
   version() { return this.get('/admin/version'); }
 };

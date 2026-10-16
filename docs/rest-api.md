@@ -774,6 +774,60 @@ as transcoded. `transcodeCache` is `null` when there is no cache.
 Random N snapshots: `{ "snapshots": [ { "context", "id", "directory", "clientIp", "clientAgent", "requestedSize",
 "tracks", "createdAt", "lastActivity", "activeStreams" } ] }`.
 
+### Bulk tag edit of a folder tree
+
+`POST /api/v1/admin/folders/tags/preview` with `{ "path": "root/dir", "edit": { "genre": "Rock", ... } }` counts what an
+edit of the directory and everything below it would touch: `{ "files", "segments", "notEditable", "notApplicable" }`
+(`files` are written; cue/chapter segments have no tags of their own, read-only formats and files that cannot store the
+filled fields are skipped). Nothing is written.
+
+`POST /api/v1/admin/folders/tags/apply` with the same body plus `"confirm": "I CONSENT"` (exact) and
+`"expectedFiles"` (the previewed `files`) starts the job: `202` with the job state. `400` without the consent phrase,
+`409` when the count changed since the preview or a job is already running. Files are rewritten in chunks of 100
+(temporary file, atomic rename); the old values of every changed file are appended as JSON lines to
+`<dataDir>/tag-changes.log`. A file that cannot be written fails alone and does not stop the job.
+
+`GET /api/v1/admin/folders/tags/job` reports it: `{ "running", "directory", "total", "done", "failed", "failures":
+[ { "path", "error" } ], "startedAt", "finishedAt", "error" }` (the last job stays readable until the next one starts).
+
+### Lyrics
+
+`GET /api/v1/library/lyrics?path=` (any signed-in user, confined to their roots): `{ "lyrics": { "source", "synced", "lines":
+[ { "t", "text" } ] } | null, "canLookUp" }` (`t` in milliseconds, -1 for plain lyrics). Admin: `GET /admin/lyrics/status`
+(`{ "provider" }`, null when off), `POST /admin/lyrics/lookup { "path" }` (`{ "candidates", "existing" }`; `400` without a
+provider, `500 io_error` when the service does not answer), `POST /admin/lyrics/save { "path", "text" }` (LRC or plain text;
+writes `name.lrc` / `name.txt` next to the file), and the folder job: `POST /admin/lyrics/folder/start { "path",
+"replaceExisting"? }` (`202`), `GET /admin/lyrics/folder/job` (`{ running, directory, total, done, items: [ { path, title,
+outcome, synced, preview, error, applied } ] }`), `POST /admin/lyrics/folder/apply { "paths": [...] }` (`{ written, job }`).
+
+### `GET|PUT /api/v1/admin/settings/navigations`
+
+Live editing of the configured navigations. `GET` returns `{ "version", "navigations": [ { "name", "subitems",
+"ranges", "index" } ], "extraTags", "tags", "virtualTags", "discovered": [ { "name", "count" } ] }`. `PUT` takes
+`{ "version", "navigations", "extraTags"? }`: `409` when `version` is not the current one (someone else saved meanwhile),
+`400 invalid` for a duplicate name, an unknown tag, or `subitems < 1` / `ranges < 2` (nothing is saved). On success the
+navigations are written to `config.json` (previous file kept as `config.json.bak`) and applied without a restart;
+`{ "version", "persisted" }`. The user-level library API serves them at `GET /api/v1/library/navigations` (names and keys),
+`GET /library/nav/{key}[/{id}]` (child groups or tracks of one node, with `path`; `~` is the top node) and
+`GET /library/nav/{key}/{id}/tracks` (every track below a node).
+
+### `GET /api/v1/admin/folders/delete-preview?path=`
+
+What deleting the directory recursively would remove: `{ "tracks", "otherFiles", "folders" }` (catalog songs including
+cue/chapter segments; every other file such as art, lists and settings; sub-directories; the `.deleted` trash is not
+counted). A library root is refused (`400`).
+
+### `DELETE /api/v1/admin/folders/directory?path=&recursive=true&confirm=I%20CONSENT`
+
+Moves the directory to the `.deleted` folder of its parent. `confirm` must be exactly `I CONSENT` (all capitals), else `400
+invalid`; the web UI shows the preview counts and asks the user to type it.
+
+### `POST /api/v1/admin/snapshots/to-playlist`
+
+Body `{ "context", "name" }` (`context` from `GET /admin/snapshots`): saves the snapshot's tracks, in order, as a new
+global playlist; `201 { "key", "name", "count" }`. Entries a rescan removed in the meantime are skipped; `404` for an
+unknown or expired snapshot.
+
 ### `GET /api/v1/admin/version`
 
 `{ "version", "commit", "buildTime", "java", "startedAt" }` (`commit`/`buildTime` are `unknown` unless stamped at build).

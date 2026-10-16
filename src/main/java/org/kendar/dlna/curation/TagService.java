@@ -37,12 +37,19 @@ public final class TagService {
     private final LibraryFiles files;
     private final TagWriter writer;
     private final TagReader reader;
+    private final BulkTags bulk;
 
     public TagService(CatalogService catalog, LibraryFiles files, TagWriter writer, TagReader reader) {
         this.catalog = catalog;
         this.files = files;
         this.writer = writer;
         this.reader = reader;
+        this.bulk = new BulkTags(this, catalog::current);
+    }
+
+    /** The "edit every file below a directory" job. */
+    public BulkTags bulk() {
+        return bulk;
     }
 
     /** The reader used to re-read files after a write (also used by the list.json editor). */

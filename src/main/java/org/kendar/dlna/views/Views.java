@@ -11,6 +11,8 @@ import org.kendar.dlna.catalog.ContainerNavigation;
 import org.kendar.dlna.catalog.DirectorySettings;
 import org.kendar.dlna.catalog.EffectiveTrack;
 import org.kendar.dlna.catalog.Folder;
+import org.kendar.dlna.catalog.Navigation;
+import org.kendar.dlna.catalog.NavigationRegistry;
 import org.kendar.dlna.catalog.Snapshot;
 import org.kendar.dlna.catalog.Track;
 import org.kendar.dlna.catalog.ViewKind;
@@ -29,12 +31,24 @@ public final class Views implements ContainerNavigation {
     public static final int DEFAULT_BUCKET_THRESHOLD = 500;
 
     /** Memoized trees of one catalog snapshot. */
-    private record Memo(Snapshot snapshot, ConcurrentMap<String, ViewBuilder.Tree> trees) {
+    private record Memo(Snapshot snapshot, long navVersion, ConcurrentMap<String, ViewBuilder.Tree> trees,
+            ConcurrentMap<String, FolderRanges.Layout> layouts) {
     }
 
     private final Supplier<Snapshot> catalog;
     private final int bucketThreshold;
     private volatile Memo memo;
+    private volatile NavigationRegistry navigations = NavigationRegistry.empty();
+
+    /** The configured navigations this instance builds trees for (replaceable at run time). */
+    public Views withNavigations(NavigationRegistry registry) {
+        this.navigations = registry;
+        return this;
+    }
+
+    public NavigationRegistry navigations() {
+        return navigations;
+    }
 
     public Views(Supplier<Snapshot> catalog) {
         this(catalog, DEFAULT_BUCKET_THRESHOLD);
@@ -44,7 +58,39 @@ public final class Views implements ContainerNavigation {
     public Views(Supplier<Snapshot> catalog, int bucketThreshold) {
         this.catalog = catalog;
         this.bucketThreshold = bucketThreshold;
-        this.memo = new Memo(null, new ConcurrentHashMap<>());
+        this.memo = new Memo(null, 0, new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
+    }
+
+    /** Global defaults of the letter ranges (a directory's own, inherited values win). */
+    public record RangeDefaults(int subitems, int ranges) {
+    }
+
+    private volatile RangeDefaults rangeDefaults = new RangeDefaults(50, 10);
+
+    /** Sets the global {@code subitems} / {@code ranges} defaults (config {@code views.subitems / views.ranges}). */
+    public Views withRangeDefaults(int subitems, int ranges) {
+        this.rangeDefaults = new RangeDefaults(subitems, ranges);
+        return this;
+    }
+
+    public RangeDefaults rangeDefaults() {
+        return rangeDefaults;
+    }
+
+    /** The letter-range layout of a directory's real children (memoized per catalog snapshot). */
+    public FolderRanges.Layout folderLayout(Snapshot snap, Folder folder) {
+        RangeDefaults d = rangeDefaults;
+        return memoFor(snap).layouts().computeIfAbsent(folder.id(),
+                k -> FolderRanges.layout(snap, folder, d.subitems(), d.ranges()));
+    }
+
+    /** A range container by its {@code g.<dirId>.<...>} context id. */
+    public Optional<FolderRanges.Range> rangeNode(Snapshot snap, String contextId) {
+        String dirId = FolderRanges.directoryOf(contextId);
+        if (dirId == null) {
+            return Optional.empty();
+        }
+        return snap.folderById(dirId).map(f -> folderLayout(snap, f).index().get(contextId));
     }
 
     /** The id of the view container below a directory. */
@@ -105,10 +151,81 @@ public final class Views implements ContainerNavigation {
         }
         ViewKind kind = ViewBuilder.kindOf(parts[2]);
         Optional<Folder> folder = snap.folderById(parts[1]);
-        if (kind == null || folder.isEmpty()) {
+        if (folder.isEmpty()) {
             return Optional.empty();
         }
+        if (kind == null) {
+            return navigations.state().byKey(parts[2])
+                    .map(n -> navigationTree(snap, folder.get(), n).index().get(contextId));
+        }
         return Optional.ofNullable(tree(snap, folder.get(), kind).index().get(contextId));
+    }
+
+    // ---- configured navigations ----
+
+    /**
+     * The navigations a directory lists: its own (or inherited) {@code navigations} setting, matched by name;
+     * unset everywhere, a library root lists every configured navigation and other directories none.
+     */
+    public List<Navigation> navigationsOf(Snapshot snap, Folder folder) {
+        if (folder.isVirtual()) {
+            return List.of();
+        }
+        NavigationRegistry.State st = navigations.state();
+        List<String> names = snap.effectiveSettings(folder.ref()).navigations();
+        if (names == null) {
+            return folder.isRoot() ? st.navigations() : List.of();
+        }
+        return names.stream().map(st::byName).flatMap(Optional::stream).distinct().toList();
+    }
+
+    /** The navigation containers of a directory (those that have something to show), in settings order. */
+    public List<ViewNode> navigationRoots(Snapshot snap, Folder folder) {
+        return navigationsOf(snap, folder).stream().map(n -> navigationTree(snap, folder, n).root())
+                .filter(r -> r.childCount() > 0).toList();
+    }
+
+    /** The id of a navigation's container below a directory. */
+    public static String navigationRootId(Folder folder, Navigation nav) {
+        return NavBuilder.rootId(folder.id(), nav);
+    }
+
+    private ViewBuilder.Tree navigationTree(Snapshot snap, Folder folder, Navigation nav) {
+        return memoFor(snap).trees().computeIfAbsent(folder.id() + "." + nav.key(), k -> {
+            List<EffectiveTrack> pool = snap.subtreeTracks(folder.ref()).stream()
+                    .map(t -> EffectiveTrack.of(t, snap.folder(t.parentRef()).map(Folder::settings)
+                            .orElse(DirectorySettings.DEFAULT)))
+                    .toList();
+            DirectorySettings eff = snap.effectiveSettings(folder.ref());
+            RangeDefaults d = rangeDefaults;
+            return new NavBuilder(folder.id(), nav, eff.subitems() != null ? eff.subitems() : d.subitems(),
+                    eff.ranges() != null ? eff.ranges() : d.ranges()).build(pool);
+        });
+    }
+
+    /** A node of a navigation over the given roots (the whole library of a user), for the web API. */
+    public Optional<ViewNode> libraryNavigation(Snapshot snap, java.util.Set<String> roots, Navigation nav,
+            String suffix) {
+        String scope = new java.util.TreeSet<>(roots).toString();
+        String scopeId = "lib" + Integer.toHexString(scope.hashCode());
+        ViewBuilder.Tree tree = memoFor(snap).trees().computeIfAbsent(scopeId + "|" + scope + "." + nav.key(), k -> {
+            List<EffectiveTrack> pool = new java.util.ArrayList<>();
+            for (Folder root : snap.roots()) {
+                if (!roots.contains(root.ref().root())) {
+                    continue;
+                }
+                for (Track t : snap.subtreeTracks(root.ref())) {
+                    pool.add(EffectiveTrack.of(t, snap.folder(t.parentRef()).map(Folder::settings)
+                            .orElse(DirectorySettings.DEFAULT)));
+                }
+            }
+            RangeDefaults d = rangeDefaults;
+            return new NavBuilder(scopeId, nav, d.subitems(), d.ranges()).build(pool);
+        });
+        if (suffix == null || suffix.isEmpty()) {
+            return Optional.of(tree.root());
+        }
+        return Optional.ofNullable(tree.index().get(tree.root().id() + "." + suffix));
     }
 
     @Override
@@ -169,12 +286,13 @@ public final class Views implements ContainerNavigation {
 
     private Memo memoFor(Snapshot snap) {
         Memo m = memo;
-        if (m.snapshot() == snap) {
+        long version = navigations.state().version();
+        if (m.snapshot() == snap && m.navVersion() == version) {
             return m;
         }
         synchronized (this) {
-            if (memo.snapshot() != snap) {
-                memo = new Memo(snap, new ConcurrentHashMap<>());
+            if (memo.snapshot() != snap || memo.navVersion() != version) {
+                memo = new Memo(snap, version, new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
             }
             return memo;
         }

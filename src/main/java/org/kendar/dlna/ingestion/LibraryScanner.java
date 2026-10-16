@@ -63,6 +63,19 @@ public class LibraryScanner {
         this.virtualAlbums = virtualAlbums;
     }
 
+    private volatile TagDiscovery tagDiscovery;
+    private volatile java.nio.file.Path tagsFile;
+
+    /**
+     * Collects the non-standard tag names the readers find and writes them to {@code file} ({@code tags.json}) at
+     * the end of every scan; a full scan that re-reads every file starts the counts afresh.
+     */
+    public LibraryScanner withTagDiscovery(TagDiscovery discovery, java.nio.file.Path file) {
+        this.tagDiscovery = discovery;
+        this.tagsFile = file;
+        return this;
+    }
+
     /** @param roots root name to directory, in display order */
     public Snapshot scan(Map<String, Path> roots, long updateId) {
         return scan(roots, null, updateId);
@@ -115,6 +128,10 @@ public class LibraryScanner {
         List<UnsupportedFile> unsupported = new ArrayList<>();
         List<Pending> pending = new ArrayList<>();
         List<Track> tracks = new ArrayList<>();
+        TagDiscovery discovery = tagDiscovery;
+        if (discovery != null && requestedScope == null && (previous == null || force)) {
+            discovery.reset();   // every file is read again: the counts start afresh
+        }
 
         if (scope == null) {
             for (Map.Entry<String, Path> root : roots.entrySet()) {
@@ -205,6 +222,10 @@ public class LibraryScanner {
         LOG.info("Scan complete: " + folders.size() + " folders, " + tracks.size() + " tracks ("
                 + progress.tracksReused() + " reused), " + unsupported.size() + " unsupported");
         List<Playlist> playlists = loadPlaylists(playlistsDir);
+        playlists.addAll(SystemPlaylists.discover(roots));
+        if (discovery != null) {
+            discovery.write(tagsFile);
+        }
         return new Snapshot(updateId, clock.instant(), folders, tracks, unsupported, playlists);
     }
 

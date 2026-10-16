@@ -9,7 +9,16 @@ import java.util.List;
  */
 public record TrackTags(String title, String artist, String album, String albumArtist, String genre, Integer year,
         Integer trackNo, Integer discNo, Integer discTotal, List<String> artists, List<String> albumArtists,
-        List<String> genres, String composer, List<String> composers, String transcriber) {
+        List<String> genres, String composer, List<String> composers, String transcriber,
+        java.util.Map<String, List<String>> extras) {
+
+    /** Tags without extra tags. */
+    public TrackTags(String title, String artist, String album, String albumArtist, String genre, Integer year,
+            Integer trackNo, Integer discNo, Integer discTotal, List<String> artists, List<String> albumArtists,
+            List<String> genres, String composer, List<String> composers, String transcriber) {
+        this(title, artist, album, albumArtist, genre, year, trackNo, discNo, discTotal, artists, albumArtists, genres,
+                composer, composers, transcriber, null);
+    }
 
     public static final TrackTags EMPTY = new TrackTags(null, null, null, null, null, null, null, null, null);
 
@@ -18,6 +27,7 @@ public record TrackTags(String title, String artist, String album, String albumA
         albumArtists = albumArtists == null ? List.of() : List.copyOf(albumArtists);
         genres = genres == null ? List.of() : List.copyOf(genres);
         composers = composers == null ? List.of() : List.copyOf(composers);
+        extras = normalizeExtras(extras);
     }
 
     /** Tags without a transcriber. */
@@ -41,6 +51,31 @@ public record TrackTags(String title, String artist, String album, String albumA
             Integer trackNo, Integer discNo, Integer discTotal) {
         this(title, artist, album, albumArtist, genre, year, trackNo, discNo, discTotal, null, null, null, null,
                 null);
+    }
+
+    /** The values of an extra tag (configured in extraTags, read from the file), by lower-case name. */
+    public List<String> extra(String tag) {
+        List<String> v = tag == null ? null : extras.get(tag.strip().toLowerCase(java.util.Locale.ROOT));
+        return v == null ? List.of() : v;
+    }
+
+    /** The same tags with other extra tags. */
+    public TrackTags withExtras(java.util.Map<String, List<String>> next) {
+        return new TrackTags(title, artist, album, albumArtist, genre, year, trackNo, discNo, discTotal, artists,
+                albumArtists, genres, composer, composers, transcriber, next);
+    }
+
+    private static java.util.Map<String, List<String>> normalizeExtras(java.util.Map<String, List<String>> in) {
+        if (in == null || in.isEmpty()) {
+            return java.util.Map.of();
+        }
+        java.util.Map<String, List<String>> out = new java.util.TreeMap<>();
+        in.forEach((k, v) -> {
+            if (k != null && !k.isBlank() && v != null && !v.isEmpty()) {
+                out.put(k.strip().toLowerCase(java.util.Locale.ROOT), List.copyOf(v));
+            }
+        });
+        return java.util.Collections.unmodifiableMap(out);
     }
 
     /** All track artists: the multi-values when present, else the single value, else empty. */

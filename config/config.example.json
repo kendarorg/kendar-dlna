@@ -17,7 +17,12 @@
     "ttlMinutes": 30
   },
   "views": {
-    "bucketThreshold": 500
+    "bucketThreshold": 500,
+    "subitems": 50,
+    "ranges": 10
+  },
+  "lyrics": {
+    "provider": "none"
   },
   "scan": {
     "cron": "0 */12 * * *",

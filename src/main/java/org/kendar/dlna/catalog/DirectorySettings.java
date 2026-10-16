@@ -14,7 +14,15 @@ import java.util.List;
  */
 public record DirectorySettings(SortMode sort, List<String> order, AlbumInfo album, int random,
         List<ViewKind> views, int recent, String displayName, boolean keepWholeFiles, Integer bucketThreshold,
-        boolean hidden, List<String> ignore) {
+        boolean hidden, List<String> ignore, Integer subitems, Integer ranges, List<String> navigations) {
+
+    /** Settings without letter ranges and without a navigation list (both inherited). */
+    public DirectorySettings(SortMode sort, List<String> order, AlbumInfo album, int random,
+            List<ViewKind> views, int recent, String displayName, boolean keepWholeFiles, Integer bucketThreshold,
+            boolean hidden, List<String> ignore) {
+        this(sort, order, album, random, views, recent, displayName, keepWholeFiles, bucketThreshold, hidden, ignore,
+                null, null, null);
+    }
 
     public static final DirectorySettings DEFAULT =
             new DirectorySettings(SortMode.FILENAME, List.of(), AlbumInfo.NONE, 0, List.of(), 0, null, false, null);
@@ -56,23 +64,38 @@ public record DirectorySettings(SortMode sort, List<String> order, AlbumInfo alb
         bucketThreshold = bucketThreshold == null || bucketThreshold < 1 ? null : bucketThreshold;
         ignore = ignore == null ? List.of() : ignore.stream().filter(x -> x != null && !x.isBlank())
                 .map(String::strip).toList();
+        subitems = subitems == null || subitems < 1 ? null : subitems;
+        ranges = ranges == null || ranges < 2 ? null : ranges;
+        navigations = navigations == null ? null : navigations.stream().filter(x -> x != null && !x.isBlank())
+                .map(String::strip).distinct().toList();
+    }
+
+    /** These settings with the range and navigation values of {@code o} (for code that rebuilds a settings). */
+    public DirectorySettings withExtrasOf(DirectorySettings o) {
+        return new DirectorySettings(sort, order, album, random, views, recent, displayName, keepWholeFiles,
+                bucketThreshold, hidden, ignore, o.subitems, o.ranges, o.navigations);
     }
 
     /**
      * The settings in force for a sub-directory of {@code parent} (itself already effective): the inheritable
      * values - sort mode, keepWholeFiles, bucketThreshold - that this directory leaves at their defaults are taken
-     * from the parent. Everything identifying the directory (display name, album fields, order, hide patterns) and
+     * from the parent (also the range values subitems/ranges and the navigation list). Everything identifying the directory (display name, album fields, order, hide patterns) and
      * the settings that create virtual containers (random, recent, views) stay its own.
      */
     public DirectorySettings inheritFrom(DirectorySettings parent) {
         SortMode s = sort == SortMode.FILENAME && parent.sort != SortMode.EXPLICIT ? parent.sort : sort;
         boolean keep = keepWholeFiles || parent.keepWholeFiles;
         Integer bucket = bucketThreshold != null ? bucketThreshold : parent.bucketThreshold;
-        if (s == sort && keep == keepWholeFiles && java.util.Objects.equals(bucket, bucketThreshold)) {
+        Integer sub = subitems != null ? subitems : parent.subitems;
+        Integer rng = ranges != null ? ranges : parent.ranges;
+        List<String> navs = navigations != null ? navigations : parent.navigations;
+        if (s == sort && keep == keepWholeFiles && java.util.Objects.equals(bucket, bucketThreshold)
+                && java.util.Objects.equals(sub, subitems) && java.util.Objects.equals(rng, ranges)
+                && java.util.Objects.equals(navs, navigations)) {
             return this;
         }
         return new DirectorySettings(s, order, album, random, views, recent, displayName, keep, bucket, hidden,
-                ignore);
+                ignore, sub, rng, navs);
     }
 
     /** Settings without a display name. */

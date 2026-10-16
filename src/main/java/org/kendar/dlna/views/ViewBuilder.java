@@ -265,7 +265,7 @@ final class ViewBuilder {
     // ---- Album grouping ---------------------------------------------------------------------------------------
 
     /** Counts of display variants of one normalized key. */
-    private static final class Variants {
+    static final class Variants {
         private final Map<String, Integer> counts = new LinkedHashMap<>();
 
         void add(String display) {
@@ -301,7 +301,7 @@ final class ViewBuilder {
         }
     }
 
-    private static final class AlbumGroup {
+    static final class AlbumGroup {
         String id;
         String title;
         String artist;
@@ -309,7 +309,7 @@ final class ViewBuilder {
         List<EffectiveTrack> tracks;
     }
 
-    private static final Comparator<EffectiveTrack> ALBUM_ORDER = Comparator
+    static final Comparator<EffectiveTrack> ALBUM_ORDER = Comparator
             .comparing((EffectiveTrack e) -> e.discNo(), Comparator.nullsLast(Comparator.<Integer>naturalOrder()))
             .thenComparing(e -> e.track().tags().trackNo(), Comparator.nullsLast(Comparator.<Integer>naturalOrder()))
             .thenComparing(e -> e.track().fileName(), Normalizer.NATURAL);

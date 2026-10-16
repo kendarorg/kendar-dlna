@@ -147,12 +147,12 @@ public final class VirtualAlbums {
         String genre = firstNonBlank(sheet.genre(), base.genre());
         Integer disc = sheet.discNumber() != null ? sheet.discNumber() : base.discNo();
         return new TrackTags(title, artist, album, albumArtist, genre, year, c.number(), disc, base.discTotal(),
-                List.of(), List.of(), List.of(), composer, List.of(), base.transcriber());
+                List.of(), List.of(), List.of(), composer, List.of(), base.transcriber(), base.extras());
     }
 
     private static TrackTags withAlbum(TrackTags t, String album, String albumArtist) {
         return new TrackTags(t.title(), t.artist(), album, albumArtist, t.genre(), t.year(), t.trackNo(), t.discNo(),
-                t.discTotal(), t.artists(), List.of(), t.genres(), t.composer(), t.composers(), t.transcriber());
+                t.discTotal(), t.artists(), List.of(), t.genres(), t.composer(), t.composers(), t.transcriber(), t.extras());
     }
 
     private static String baseName(String name) {

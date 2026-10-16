@@ -53,6 +53,7 @@ import org.kendar.dlna.search.SearchScope;
 import org.kendar.dlna.shared.ClientId;
 import org.kendar.dlna.shuffle.RandomSnapshot;
 import org.kendar.dlna.shuffle.Shuffle;
+import org.kendar.dlna.views.FolderRanges;
 import org.kendar.dlna.views.ViewNode;
 import org.kendar.dlna.views.Views;
 
@@ -135,6 +136,10 @@ public final class BrowseEngine {
         record ViewGroupNode(ViewNode node) implements Node {
         }
 
+        /** A letter-range container of a directory's children ("A-C"). */
+        record RangeNode(FolderRanges.Range range) implements Node {
+        }
+
         /** A track listed inside a virtual container. */
         record ContextTrackNode(String context, Track track) implements Node {
         }
@@ -164,6 +169,10 @@ public final class BrowseEngine {
             case Node.ViewGroupNode v -> {
                 String[] parts = v.node().id().split("\\.");
                 yield parts.length > 1 ? snap.containerUpdateId(ContainerKeys.virtual(parts[1])) : snap.updateId();
+            }
+            case Node.RangeNode r -> {
+                String dir = FolderRanges.directoryOf(r.range().id());
+                yield dir == null ? snap.updateId() : snap.containerUpdateId(ContainerKeys.folder(dir));
             }
             case Node.Root r -> snap.updateId();
             case Node.TrackNode t -> snap.updateId();
@@ -375,6 +384,7 @@ public final class BrowseEngine {
                 case Node.Playlists p -> "Playlists";
                 case Node.RandomNode r -> Shuffle.title(r.snapshot().requestedSize());
                 case Node.ViewGroupNode v -> v.node().title();
+                case Node.RangeNode r -> r.range().label();
             };
         }
         if (track == null) {
@@ -442,6 +452,9 @@ public final class BrowseEngine {
         if (ctx.startsWith(Shuffle.CONTEXT_PREFIX)) {
             return shuffle.find(ctx).map(Node.RandomNode::new);
         }
+        if (ctx.startsWith(FolderRanges.CONTEXT_PREFIX)) {
+            return views.rangeNode(snap, ctx).map(Node.RangeNode::new);
+        }
         if (ctx.startsWith(Views.CONTEXT_PREFIX) || ctx.startsWith(Views.RECENT_PREFIX)) {
             return views.node(snap, ctx).map(Node.ViewGroupNode::new);
         }
@@ -463,9 +476,24 @@ public final class BrowseEngine {
                 out.addAll(contextTracks(v.node().id(), v.node().tracks()));
                 yield out;
             }
+            case Node.RangeNode r -> entryNodes(r.range().entries());
             case Node.TrackNode t -> List.of();
             case Node.ContextTrackNode t -> List.of();
         };
+    }
+
+    private static List<Node> entryNodes(List<FolderRanges.Entry> entries) {
+        List<Node> out = new ArrayList<>();
+        for (FolderRanges.Entry e : entries) {
+            out.add(switch (e) {
+                case FolderRanges.Real real -> switch (real.child()) {
+                    case Child.FolderChild fc -> new Node.FolderNode(fc.folder());
+                    case Child.TrackChild tc -> new Node.TrackNode(tc.track());
+                };
+                case FolderRanges.Range range -> new Node.RangeNode(range);
+            });
+        }
+        return out;
     }
 
     private List<Node> folderChildren(Snapshot snap, Folder folder, ClientId client) {
@@ -475,12 +503,8 @@ public final class BrowseEngine {
         }
         views.recentRoot(snap, folder).ifPresent(r -> out.add(new Node.ViewGroupNode(r)));
         views.roots(snap, folder).forEach(v -> out.add(new Node.ViewGroupNode(v)));
-        for (Child c : snap.children(folder.ref())) {
-            out.add(switch (c) {
-                case Child.FolderChild fc -> new Node.FolderNode(fc.folder());
-                case Child.TrackChild tc -> new Node.TrackNode(tc.track());
-            });
-        }
+        views.navigationRoots(snap, folder).forEach(v -> out.add(new Node.ViewGroupNode(v)));
+        out.addAll(entryNodes(views.folderLayout(snap, folder).top()));
         return out;
     }
 
@@ -489,9 +513,10 @@ public final class BrowseEngine {
     }
 
     /** Number of entries a folder lists: Random N, views and the real children. */
-    private static int folderChildCount(Snapshot snap, Folder folder) {
+    private int folderChildCount(Snapshot snap, Folder folder) {
         DirectorySettings s = folder.settings();
-        return (s.random() > 0 ? 1 : 0) + (s.recent() > 0 ? 1 : 0) + s.views().size() + snap.children(folder.ref()).size();
+        return (s.random() > 0 ? 1 : 0) + (s.recent() > 0 ? 1 : 0) + s.views().size()
+                + views.navigationRoots(snap, folder).size() + views.folderLayout(snap, folder).top().size();
     }
 
     private static String idOf(Node node) {
@@ -504,6 +529,7 @@ public final class BrowseEngine {
             case Node.PlaylistNode p -> ObjectIds.container(CatalogNavigation.playlistContext(p.playlist().id()));
             case Node.RandomNode r -> ObjectIds.container(r.snapshot().contextId());
             case Node.ViewGroupNode v -> ObjectIds.container(v.node().id());
+            case Node.RangeNode r -> ObjectIds.container(r.range().id());
             case Node.ContextTrackNode t -> ObjectIds.contextItem(t.context(), t.track());
         };
     }
@@ -520,6 +546,8 @@ public final class BrowseEngine {
             case Node.RandomNode r -> ObjectIds.folderOf(r.snapshot().directoryId());
             case Node.ViewGroupNode v -> v.node().parentId() != null ? ObjectIds.container(v.node().parentId())
                     : ObjectIds.folderOf(directoryOfViewContext(v.node().id()));
+            case Node.RangeNode r -> r.range().parentId() != null ? ObjectIds.container(r.range().parentId())
+                    : ObjectIds.folderOf(FolderRanges.directoryOf(r.range().id()));
             case Node.ContextTrackNode t -> ObjectIds.container(t.context());
         };
     }
@@ -561,13 +589,15 @@ public final class BrowseEngine {
             case Node.RandomNode r -> didl.addContainer(container(idOf(node), parentId,
                     Shuffle.title(r.snapshot().requestedSize()), r.snapshot().tracks(snap).size(), filter));
             case Node.ViewGroupNode v -> didl.addContainer(viewContainer(snap, v.node(), parentId, base, filter));
+            case Node.RangeNode r -> didl.addContainer(container(ObjectIds.container(r.range().id()), parentId,
+                    r.range().label(), r.range().entries().size(), filter));
             case Node.ContextTrackNode t -> didl.addItem(track(snap, t.track(),
                     ObjectIds.contextItem(t.context(), t.track()), parentId, t.context(), base, filter, profile));
         }
     }
 
     /** The container of a cue sheet / chaptered file: an album whose items are its sections. */
-    private static Container virtualAlbum(Snapshot snap, Folder folder, String parentId, DidlFilter filter) {
+    private Container virtualAlbum(Snapshot snap, Folder folder, String parentId, DidlFilter filter) {
         String artist = null;
         for (Child c : snap.children(folder.ref())) {
             if (c instanceof Child.TrackChild t) {

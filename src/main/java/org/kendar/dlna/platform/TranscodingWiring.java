@@ -101,9 +101,20 @@ final class TranscodingWiring {
         return tunes.get(tune - 1).sequence();
     }
 
+    private java.util.function.Supplier<java.util.Collection<String>> extraTags = java.util.List::of;
+    private org.kendar.dlna.ingestion.TagDiscovery discovery;
+
+    /** The extra tags to keep in the tracks and where the tag names found are collected. */
+    TranscodingWiring withTags(java.util.function.Supplier<java.util.Collection<String>> extra,
+            org.kendar.dlna.ingestion.TagDiscovery found) {
+        this.extraTags = extra;
+        this.discovery = found;
+        return this;
+    }
+
     /** Tags and basic properties of all formats this installation can serve (no sample-count probing). */
     TagReader plainTagReader() {
-        return new CompositeTagReader(new JAudioTaggerReader(), new OpusTagReader(),
+        return new CompositeTagReader(new JAudioTaggerReader(extraTags, discovery), new OpusTagReader(),
                 new MidiTagReader(midiAvailable, midiReason), new AbcTagReader(midiAvailable, midiReason),
                 new FfmpegTagReader(ffmpegBinary, ffmpegUsable(), String.valueOf(ffmpegProblem()), Ffmpeg::outputRate));
     }

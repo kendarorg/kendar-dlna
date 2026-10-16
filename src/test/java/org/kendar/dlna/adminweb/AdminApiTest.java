@@ -43,6 +43,7 @@ class AdminApiTest {
     AdminApi api;
     ActiveStreams streams = new ActiveStreams();
     Shuffle shuffle;
+    org.kendar.dlna.catalog.NavigationRegistry navigations = org.kendar.dlna.catalog.NavigationRegistry.empty();
     String generated;
 
     @BeforeEach
@@ -55,11 +56,29 @@ class AdminApiTest {
         identity.bootstrap(java.util.Optional.empty());
         generated = log.get(0).lines().filter(l -> l.contains("password:")).findFirst().orElseThrow()
                 .replaceFirst(".*password:\\s*", "").trim();
+        try {
+            java.nio.file.Files.createDirectories(tmp.resolve("config"));
+            java.nio.file.Files.writeString(tmp.resolve("config/config.json"), "{}");
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
         TagService tags = new TagService(lib.catalog, lib.files, new org.kendar.dlna.curation.PerFormatTagWriter(), lib.reader);
         shuffle = new Shuffle(lib.catalog::current);
         AdminServices svc = new AdminServices(lib.catalog, lib.rescans, tags,
                 new FolderService(lib.catalog, lib.files, tags), new PlaylistService(lib.catalog, lib.playlists),
-                shuffle, streams, null, () -> 0, new BuildInfo("1.2.3", "abc123", "2026-01-01T00:00:00Z"), lib.clock);
+                shuffle, streams, null, () -> 0, new BuildInfo("1.2.3", "abc123", "2026-01-01T00:00:00Z"), lib.clock,
+                tmp.resolve("config"), cfg -> { }, navigations,
+                new org.kendar.dlna.lyrics.LyricsService(lib.catalog::current, lib.files, new org.kendar.dlna.lyrics.LyricsProvider() {
+                    @Override
+                    public String id() {
+                        return "fake";
+                    }
+
+                    @Override
+                    public java.util.List<org.kendar.dlna.lyrics.Lyrics> find(Query q) {
+                        return java.util.List.of(org.kendar.dlna.lyrics.LrcParser.parse("[00:01.00]Found " + q.title(), "fake"));
+                    }
+                }, 0));
         api = new AdminApi(svc, identity);
     }
 
@@ -286,6 +305,27 @@ class AdminApiTest {
 
     // ---- folders ----
 
+
+    @Test
+    void deletingADirectoryNeedsThePreviewedConsent() {
+        Client c = ready();
+
+        ApiResponse preview = c.get("/admin/folders/delete-preview", "path", "main/Album");
+        assertThat(preview.status()).isEqualTo(200);
+        assertThat(preview.jsonBody().get("tracks").asInt()).isEqualTo(4);
+
+        ApiResponse noConfirm = c.write("DELETE", "/admin/folders/directory", null, "path", "main/Album", "recursive", "true");
+        assertThat(noConfirm.status()).isEqualTo(400);
+        ApiResponse wrong = c.write("DELETE", "/admin/folders/directory", null,
+                "path", "main/Album", "recursive", "true", "confirm", "i consent");
+        assertThat(wrong.status()).isEqualTo(400);
+        assertThat(lib.music.resolve("Album")).exists();
+
+        ApiResponse ok = c.write("DELETE", "/admin/folders/directory", null,
+                "path", "main/Album", "recursive", "true", "confirm", "I CONSENT");
+        assertThat(ok.status()).isEqualTo(200);
+        assertThat(lib.music.resolve("Album")).doesNotExist();
+    }
     @Test
     void treeAndContents() {
         Client c = ready();
@@ -694,6 +734,123 @@ class AdminApiTest {
         assertThat(v.get("commit").asText()).isEqualTo("abc123");
     }
 
+
+    @Test
+    void aRandomSnapshotCanBeExportedAsAPlaylist() {
+        Client c = ready();
+        c.write("PUT", "/admin/folders/settings", Map.of("random", 3), "path", "main/Album");
+        var snap = shuffle.open(new ClientId("10.0.0.9", "VLC"), lib.catalog.current().folder(
+                LibraryFixture.ref("main/Album")).orElseThrow());
+
+        ApiResponse ok = c.write("POST", "/admin/snapshots/to-playlist", Map.of("context", snap.contextId(), "name", "Picked"));
+        assertThat(ok.status()).isEqualTo(201);
+        assertThat(ok.jsonBody().get("count").asInt()).isEqualTo(3);
+        var playlist = lib.catalog.current().playlistDefinitions().stream()
+                .filter(p -> p.name().equals("Picked")).findFirst().orElseThrow();
+        assertThat(playlist.songs()).containsExactlyElementsOf(
+                snap.tracks(lib.catalog.current()).stream().map(t -> t.ref().qualified()).toList());
+
+        assertThat(c.write("POST", "/admin/snapshots/to-playlist", Map.of("context", "r.nope.nope", "name", "x")).status())
+                .isEqualTo(404);
+    }
+
+    @Test
+    void bulkTagEditPreviewsThenNeedsConsentAndTheCount() throws Exception {
+        Client c = ready();
+        Map<String, Object> edit = Map.of("genre", "Via Api");
+        Map<String, Object> pv = Map.of("path", "main/Album", "edit", edit);
+
+        ApiResponse preview = c.write("POST", "/admin/folders/tags/preview", pv);
+        assertThat(preview.status()).isEqualTo(200);
+        int files = preview.jsonBody().get("files").asInt();
+        assertThat(files).isPositive();
+
+        Map<String, Object> noConsent = Map.of("path", "main/Album", "edit", edit, "expectedFiles", files);
+        assertThat(c.write("POST", "/admin/folders/tags/apply", noConsent).status()).isEqualTo(400);
+        Map<String, Object> wrongCount = Map.of("path", "main/Album", "edit", edit, "expectedFiles", files + 1,
+                "confirm", "I CONSENT");
+        assertThat(c.write("POST", "/admin/folders/tags/apply", wrongCount).status()).isEqualTo(409);
+
+        Map<String, Object> ok = Map.of("path", "main/Album", "edit", edit, "expectedFiles", files, "confirm", "I CONSENT");
+        assertThat(c.write("POST", "/admin/folders/tags/apply", ok).status()).isEqualTo(202);
+        for (int i = 0; i < 200 && c.get("/admin/folders/tags/job").jsonBody().get("running").asBoolean(); i++) {
+            Thread.sleep(50);
+        }
+        JsonNode job = c.get("/admin/folders/tags/job").jsonBody();
+        assertThat(job.get("running").asBoolean()).isFalse();
+        assertThat(job.get("done").asInt()).isEqualTo(files);
+    }
+
+    @Test
+    void navigationsAreEditedLiveValidatedAndSavedIntoTheConfig() throws Exception {
+        Client c = ready();
+        JsonNode before = c.get("/admin/settings/navigations").jsonBody();
+        assertThat(before.get("navigations")).isEmpty();
+        assertThat(before.get("tags").toString()).contains("album").contains("genre");
+        assertThat(before.get("virtualTags").toString()).contains("bitrate");
+        long version = before.get("version").asLong();
+
+        Map<String, Object> body = Map.of("version", version, "navigations", java.util.List.of(
+                Map.of("name", "Kinds", "ranges", 5, "index", java.util.List.of("TYPE", "title")),
+                Map.of("name", "Songs", "index", java.util.List.of("title"))));
+        ApiResponse ok = c.write("PUT", "/admin/settings/navigations", body);
+        assertThat(ok.status()).isEqualTo(200);
+        assertThat(ok.jsonBody().get("persisted").asBoolean()).isTrue();
+        assertThat(navigations.state().navigations()).extracting(n -> n.name()).containsExactly("Kinds", "Songs");
+        assertThat(navigations.state().navigations().get(0).index()).as("canonical spelling").containsExactly("type", "title");
+        String cfg = Files.readString(tmp.resolve("config/config.json"));
+        assertThat(cfg).contains("\"Kinds\"").contains("\"ranges\" : 5");
+        assertThat(tmp.resolve("config/config.json.bak")).exists();
+
+        // an old version is a conflict, an unknown tag is rejected and nothing changes
+        assertThat(c.write("PUT", "/admin/settings/navigations", body).status()).isEqualTo(409);
+        long now = navigations.state().version();
+        Map<String, Object> bad = Map.of("version", now, "navigations", java.util.List.of(
+                Map.of("name", "Bad", "index", java.util.List.of("nonsense"))));
+        ApiResponse rejected = c.write("PUT", "/admin/settings/navigations", bad);
+        assertThat(rejected.status()).isEqualTo(400);
+        assertThat(navigations.state().navigations()).hasSize(2);
+
+        // extra tags can be declared and then used
+        Map<String, Object> withExtra = Map.of("version", now, "extraTags", java.util.List.of("Mood"),
+                "navigations", java.util.List.of(Map.of("name", "Moods", "index", java.util.List.of("mood", "title"))));
+        assertThat(c.write("PUT", "/admin/settings/navigations", withExtra).status()).isEqualTo(200);
+        assertThat(navigations.state().extraTags()).containsExactly("Mood");
+        assertThat(navigations.state().navigations().get(0).index()).containsExactly("Mood", "title");
+    }
+
+    @Test
+    void lyricsAreReadByUsersAndLookedUpAndSavedByAdmins() throws Exception {
+        Client c = ready();
+        String path = "main/Album/03 three.mp3";
+
+        JsonNode none = c.get("/library/lyrics", "path", path).jsonBody();
+        assertThat(none.get("lyrics").isNull()).isTrue();
+        assertThat(none.get("canLookUp").asBoolean()).isTrue();
+
+        JsonNode found = c.write("POST", "/admin/lyrics/lookup", Map.of("path", path)).jsonBody();
+        assertThat(found.get("candidates")).hasSize(1);
+        assertThat(found.get("candidates").get(0).get("synced").asBoolean()).isTrue();
+        assertThat(Files.exists(lib.music.resolve("Album/03 three.lrc"))).as("a lookup writes nothing").isFalse();
+
+        ApiResponse saved = c.write("POST", "/admin/lyrics/save", Map.of("path", path, "text", "[00:02.00]Hello\n[00:04.00]World"));
+        assertThat(saved.status()).isEqualTo(200);
+        assertThat(saved.jsonBody().get("file").asText()).isEqualTo("03 three.lrc");
+        JsonNode read = c.get("/library/lyrics", "path", path).jsonBody();
+        assertThat(read.get("lyrics").get("synced").asBoolean()).isTrue();
+        assertThat(read.get("lyrics").get("lines").get(1).get("t").asLong()).isEqualTo(4000L);
+
+        assertThat(c.get("/library/lyrics", "path", "main/Nope.mp3").status()).isEqualTo(404);
+        assertThat(c.write("POST", "/admin/lyrics/save", Map.of("path", path, "text", "  ")).status()).isEqualTo(400);
+
+        assertThat(c.write("POST", "/admin/lyrics/folder/start", Map.of("path", "main/Album")).status()).isEqualTo(202);
+        for (int i = 0; i < 200 && c.get("/admin/lyrics/folder/job").jsonBody().get("running").asBoolean(); i++) {
+            Thread.sleep(25);
+        }
+        JsonNode job = c.get("/admin/lyrics/folder/job").jsonBody();
+        assertThat(job.get("done").asInt()).isEqualTo(4);
+        assertThat(job.get("items").toString()).contains("has_lyrics").contains("matched");
+    }
     @Test
     void unknownResourcesGetAJson404() {
         Client c = ready();

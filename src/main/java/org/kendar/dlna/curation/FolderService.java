@@ -126,10 +126,17 @@ public final class FolderService {
         Integer bucket = body.has("bucketThreshold") ? next.bucketThreshold() : folder.settings().bucketThreshold();
         boolean hidden = body.has("hidden") ? next.hidden() : folder.settings().hidden();
         List<String> ignore = body.has("ignore") ? next.ignore() : folder.settings().ignore();
+        Integer subitems = body.has("subitems") ? next.subitems() : folder.settings().subitems();
+        Integer ranges = body.has("ranges") ? next.ranges() : folder.settings().ranges();
+        List<String> navigations = body.has("navigations") ? next.navigations() : folder.settings().navigations();
         if (keepWhole != next.keepWholeFiles() || !java.util.Objects.equals(bucket, next.bucketThreshold())
-                || hidden != next.hidden() || !ignore.equals(next.ignore())) {
+                || hidden != next.hidden() || !ignore.equals(next.ignore())
+                || !java.util.Objects.equals(subitems, next.subitems())
+                || !java.util.Objects.equals(ranges, next.ranges())
+                || !java.util.Objects.equals(navigations, next.navigations())) {
             next = new DirectorySettings(next.sort(), next.order(), next.album(), next.random(), next.views(),
-                    next.recent(), next.displayName(), keepWhole, bucket, hidden, ignore);
+                    next.recent(), next.displayName(), keepWhole, bucket, hidden, ignore, subitems, ranges,
+                    navigations);
         }
         validate(next);
         return store(folder, next);
@@ -227,6 +234,22 @@ public final class FolderService {
             out.remove("bucketThreshold");
         } else {
             out.put("bucketThreshold", s.bucketThreshold());
+        }
+        if (s.subitems() == null) {
+            out.remove("subitems");
+        } else {
+            out.put("subitems", s.subitems());
+        }
+        if (s.ranges() == null) {
+            out.remove("ranges");
+        } else {
+            out.put("ranges", s.ranges());
+        }
+        if (s.navigations() == null) {
+            out.remove("navigations");
+        } else {
+            ArrayNode navs = out.putArray("navigations");
+            s.navigations().forEach(navs::add);
         }
         if (s.hidden()) {
             out.put("hidden", true);
@@ -355,7 +378,7 @@ public final class FolderService {
         DirectorySettings cur = folder.settings();
         DirectorySettings next = new DirectorySettings(cur.sort(), cur.order(), album, cur.random(), cur.views(),
                 cur.recent(), cur.displayName(), cur.keepWholeFiles(), cur.bucketThreshold(), cur.hidden(),
-                cur.ignore());
+                cur.ignore()).withExtrasOf(cur);
         if (write) {
             store(folder, next);
         }
@@ -651,6 +674,53 @@ public final class FolderService {
     }
 
     /**
+     * What a recursive delete of {@code ref} would remove: catalog tracks (songs, cue/chapter segments count as
+     * songs), every other file on disk (art, lists, settings, unscanned files) and sub-directories. The trash
+     * directory is not counted.
+     */
+    public record DeletePreview(int tracks, int otherFiles, int folders) {
+    }
+
+    public synchronized DeletePreview previewDelete(RootRef ref) {
+        if (ref.isRoot()) {
+            throw new CurationException(CurationException.INVALID, "A library root cannot be removed");
+        }
+        Path dir = directory(ref);
+        List<Track> subtree = catalog.current().subtreeTracks(ref);
+        java.util.Set<String> trackFiles = new java.util.HashSet<>();
+        for (Track t : subtree) {
+            String rel = t.ref().rel();
+            int hash = rel.indexOf('#');
+            trackFiles.add(hash < 0 ? rel : rel.substring(0, hash));
+        }
+        int[] counts = new int[2];
+        try {
+            Files.walkFileTree(dir, new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override
+                public java.nio.file.FileVisitResult preVisitDirectory(Path d, java.nio.file.attribute.BasicFileAttributes a) {
+                    if (!d.equals(dir)) {
+                        if (d.getFileName().toString().equals(DELETED_DIR)) {
+                            return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                        }
+                        counts[1]++;
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public java.nio.file.FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) {
+                    counts[0]++;
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            throw new CurationException(CurationException.IO_ERROR,
+                    "Cannot read " + ref + ": " + e.getMessage(), null, e);
+        }
+        return new DeletePreview(subtree.size(), Math.max(0, counts[0] - trackFiles.size()), counts[1]);
+    }
+
+    /**
      * Removes a directory. A non-empty one needs {@code recursive} (everything below it is deleted); a library root
      * cannot be removed. Returns the parent, which the caller rescans.
      */
@@ -739,7 +809,7 @@ public final class FolderService {
         List<String> order = new ArrayList<>(s.order());
         order.replaceAll(n -> n.equals(oldName) ? newName : n);
         store(folder, new DirectorySettings(s.sort(), order, s.album(), s.random(), s.views(), s.recent(),
-                s.displayName(), s.keepWholeFiles(), s.bucketThreshold(), s.hidden(), s.ignore()));
+                s.displayName(), s.keepWholeFiles(), s.bucketThreshold(), s.hidden(), s.ignore()).withExtrasOf(s));
     }
 
     // ---- helpers ----

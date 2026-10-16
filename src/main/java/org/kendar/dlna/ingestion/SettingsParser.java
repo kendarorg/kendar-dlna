@@ -132,6 +132,33 @@ public final class SettingsParser {
                 }
                 bucket = n.get("bucketThreshold").asInt();
             }
+            Integer subitems = null;
+            if (n.has("subitems") && !n.get("subitems").isNull()) {
+                if (!n.get("subitems").isInt() || n.get("subitems").asInt() < 1) {
+                    return failure("subitems must be an integer of at least 1");
+                }
+                subitems = n.get("subitems").asInt();
+            }
+            Integer ranges = null;
+            if (n.has("ranges") && !n.get("ranges").isNull()) {
+                if (!n.get("ranges").isInt() || n.get("ranges").asInt() < 2) {
+                    return failure("ranges must be an integer of at least 2");
+                }
+                ranges = n.get("ranges").asInt();
+            }
+            List<String> navigations = null;
+            if (n.has("navigations") && !n.get("navigations").isNull()) {
+                if (!n.get("navigations").isArray()) {
+                    return failure("navigations must be an array of navigation names");
+                }
+                navigations = new ArrayList<>();
+                for (JsonNode e : n.get("navigations")) {
+                    if (!e.isTextual() || e.asText().isBlank()) {
+                        return failure("navigations entries must be non-empty strings");
+                    }
+                    navigations.add(e.asText());
+                }
+            }
             List<String> ignore = new ArrayList<>();
             if (n.has("ignore") && !n.get("ignore").isNull()) {
                 if (!n.get("ignore").isArray()) {
@@ -145,7 +172,7 @@ public final class SettingsParser {
                 }
             }
             return new Result(new DirectorySettings(sort, order, album, random, views, recent, displayName,
-                    keepWhole, bucket, hidden, ignore), null);
+                    keepWhole, bucket, hidden, ignore, subitems, ranges, navigations), null);
         } catch (IOException | RuntimeException e) {
             return failure("malformed JSON: " + e.getMessage().lines().findFirst().orElse(""));
         }

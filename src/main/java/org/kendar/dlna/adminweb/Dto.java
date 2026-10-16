@@ -36,7 +36,8 @@ final class Dto {
                 "album", obj("title", a.title(), "albumArtist", a.albumArtist(), "year", a.year(), "genre", a.genre(),
                         "discNumber", a.discNumber(), "discTotal", a.discTotal()),
                 "random", s.random(), "recent", s.recent(), "views", views, "displayName", s.displayName(),
-                "keepWholeFiles", s.keepWholeFiles(), "bucketThreshold", s.bucketThreshold(), "hidden", s.hidden(), "ignore", s.ignore());
+                "keepWholeFiles", s.keepWholeFiles(), "bucketThreshold", s.bucketThreshold(), "hidden", s.hidden(), "ignore", s.ignore(),
+                "subitems", s.subitems(), "ranges", s.ranges(), "navigations", s.navigations());
     }
 
     /** A track with its tags; {@code parent} (nullable) is the settings of its directory for the sync marker. */

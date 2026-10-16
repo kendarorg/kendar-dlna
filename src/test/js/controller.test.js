@@ -15,7 +15,8 @@ function fakeEngine() {
     preload(url) { calls.push(['preload', url]); },
     resume() { calls.push(['resume']); }, pause() { calls.push(['pause']); }, stop() { calls.push(['stop']); },
     seek(s) { calls.push(['seek', s]); },
-    setVolume(v) { calls.push(['volume', v]); }, setMuted(m) { calls.push(['muted', m]); }
+    setVolume(v) { calls.push(['volume', v]); }, setMuted(m) { calls.push(['muted', m]); },
+    setRate(r) { calls.push(['rate', r]); }
   };
 }
 

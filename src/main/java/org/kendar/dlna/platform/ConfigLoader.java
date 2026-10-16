@@ -99,6 +99,15 @@ public final class ConfigLoader {
         }
     }
 
+    /** Navigation names are unique, every level is a known tag, a virtual tag or one of {@code extraTags}. */
+    static void validateNavigations(AppConfig cfg) {
+        try {
+            org.kendar.dlna.catalog.NavigationRules.validate(cfg.navigations(), cfg.extraTags());
+        } catch (IllegalArgumentException e) {
+            throw new ConfigException(e.getMessage());
+        }
+    }
+
     static void validate(AppConfig cfg) {
         int port = cfg.network().port();
         if (port < 0 || port > 65535) {
@@ -124,6 +133,20 @@ public final class ConfigLoader {
         }
         if (cfg.views().bucketThreshold() < 1) {
             throw new ConfigException("views.bucketThreshold must be at least 1");
+        }
+        if (cfg.views().subitems() < 1) {
+            throw new ConfigException("views.subitems must be at least 1");
+        }
+        if (cfg.views().ranges() < 2) {
+            throw new ConfigException("views.ranges must be at least 2");
+        }
+        validateNavigations(cfg);
+        if (cfg.lyrics().enabled() && !org.kendar.dlna.lyrics.LyricsProviders.KNOWN.contains(cfg.lyrics().provider())) {
+            throw new ConfigException("lyrics.provider must be none or one of " + org.kendar.dlna.lyrics.LyricsProviders.KNOWN
+                    + ", got " + cfg.lyrics().provider());
+        }
+        if (cfg.lyrics().minIntervalMillis() < 0 || cfg.lyrics().timeoutSeconds() < 1) {
+            throw new ConfigException("lyrics.minIntervalMillis must be >= 0 and lyrics.timeoutSeconds >= 1");
         }
         if (cfg.scan().catchUpThresholdHours() < 1) {
             throw new ConfigException("scan.catchUpThresholdHours must be at least 1");

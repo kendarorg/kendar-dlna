@@ -23,6 +23,8 @@ public record ViewNode(String id, String parentId, Type type, String title, Stri
         GENRE,
         /** The "All tracks" container of an artist. */
         ALL_TRACKS,
+        /** A level of a configured navigation grouped by a tag other than album, artist and genre. */
+        GROUP,
         /** The "Recently added" container: the newest tracks of the directory subtree. */
         RECENT
     }

@@ -15,6 +15,7 @@ import org.kendar.dlna.catalog.EffectiveTrack;
 import org.kendar.dlna.catalog.Folder;
 import org.kendar.dlna.catalog.Snapshot;
 import org.kendar.dlna.catalog.Track;
+import org.kendar.dlna.curation.Consent;
 import org.kendar.dlna.curation.FolderService;
 import org.kendar.dlna.curation.ListService;
 import org.kendar.dlna.ingestion.ListGenerator;
@@ -49,6 +50,9 @@ final class LibraryResources {
     }
 
     ApiResponse folders(ApiRequest req, List<String> seg) {
+        if (seg.size() >= 1 && seg.get(0).equals("tags")) {
+            return bulkTags(req, seg);
+        }
         if (seg.size() == 2 && seg.get(0).equals("list") && seg.get(1).equals("generate")) {
             return req.method().equals("POST") ? generateListJson(ref(req)) : null;
         }
@@ -81,6 +85,7 @@ final class LibraryResources {
             case "sync-from-tags" -> req.method().equals("POST")
                     ? syncFromTags(ref(req), !"true".equals(req.query().get("preview"))) : null;
             case "upload" -> req.method().equals("POST") ? uploadFile(req) : null;
+            case "delete-preview" -> req.isRead() ? deletePreview(ref(req)) : null;
             case "directory" -> switch (req.method()) {
                 case "POST" -> createDirectory(req);
                 case "DELETE" -> deleteDirectory(req);
@@ -93,6 +98,57 @@ final class LibraryResources {
             };
             default -> null;
         };
+    }
+
+    /**
+     * Bulk tag edit of a directory and everything below it: {@code POST tags/preview {path, edit}} counts,
+     * {@code POST tags/apply {path, edit, confirm, expectedFiles}} starts the background job (202),
+     * {@code GET tags/job} reports it.
+     */
+    private ApiResponse bulkTags(ApiRequest req, List<String> seg) {
+        if (seg.size() != 2) {
+            return null;
+        }
+        var bulk = svc.tags().bulk();
+        switch (seg.get(1)) {
+            case "job" -> {
+                return req.isRead() ? ApiResponse.ok(jobBody(bulk.status())) : null;
+            }
+            case "preview", "apply" -> {
+                if (!req.method().equals("POST")) {
+                    return null;
+                }
+                JsonNode body = req.json();
+                RootRef dir;
+                try {
+                    dir = RootRef.parse(body.path("path").asText(""));
+                } catch (IllegalArgumentException e) {
+                    throw new ApiException(400, "bad_request", "Invalid path: " + body.path("path").asText(""));
+                }
+                TagEdit edit = edit(body.get("edit"));
+                if (seg.get(1).equals("preview")) {
+                    var p = bulk.preview(dir, edit);
+                    return ApiResponse.ok(Dto.obj("files", p.files(), "segments", p.segments(), "notEditable",
+                            p.notEditable(), "notApplicable", p.notApplicable()));
+                }
+                if (!body.path("expectedFiles").canConvertToInt() || !body.get("expectedFiles").isNumber()) {
+                    throw new ApiException(400, "bad_request", "expectedFiles (the previewed count) is required");
+                }
+                var st = bulk.start(dir, edit, body.path("confirm").asText(null), body.get("expectedFiles").asInt());
+                return ApiResponse.json(202, jobBody(st));
+            }
+            default -> {
+                return null;
+            }
+        }
+    }
+
+    private static Map<String, Object> jobBody(org.kendar.dlna.curation.BulkTags.Status s) {
+        List<Object> failures = new ArrayList<>();
+        s.failures().forEach(f -> failures.add(Dto.obj("path", f.path(), "error", f.error())));
+        return Dto.obj("running", s.running(), "directory", s.directory(), "total", s.total(), "done", s.done(),
+                "failed", s.failed(), "failures", failures, "startedAt", s.startedAt() == null ? null : s.startedAt().toString(),
+                "finishedAt", s.finishedAt() == null ? null : s.finishedAt().toString(), "error", s.error());
     }
 
     private static RootRef ref(ApiRequest req) {
@@ -127,8 +183,18 @@ final class LibraryResources {
         return ApiResponse.ok(Dto.obj("path", dir.qualified(), "rescanStarted", rescan(parent)));
     }
 
-    /** {@code path} = the directory; {@code recursive=true} is needed when it is not empty. */
+    /** What deleting {@code path} recursively would remove (the admin shows it before asking for the consent). */
+    private ApiResponse deletePreview(RootRef dir) {
+        FolderService.DeletePreview p = svc.folders().previewDelete(dir);
+        return ApiResponse.ok(Dto.obj("tracks", p.tracks(), "otherFiles", p.otherFiles(), "folders", p.folders()));
+    }
+
+    /**
+     * {@code path} = the directory; {@code recursive=true} is needed when it is not empty; {@code confirm} must be
+     * exactly "I CONSENT".
+     */
     private ApiResponse deleteDirectory(ApiRequest req) {
+        Consent.require(req.query().get("confirm"));
         RootRef parent = svc.folders().deleteDirectory(ref(req), "true".equals(req.query().get("recursive")));
         return ApiResponse.ok(Dto.obj("parent", parent.qualified(), "rescanStarted", rescan(parent)));
     }

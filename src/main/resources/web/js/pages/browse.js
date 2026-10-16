@@ -376,3 +376,74 @@ export const PlaceholderPage = {
       <p class="muted">{{ $t('placeholder.text') }}</p>
     </section>`
 };
+
+/** One level of a configured tag navigation: its child groups (tiles) or its tracks, with the ancestors as crumbs. */
+export const NavigationPage = {
+  name: 'NavigationPage',
+  components: COMPONENTS,
+  data() { return { head: null, pager: null, mode: 'groups' }; },
+  computed: {
+    name() { return this.$route.params.name; },
+    navName() { return this.head ? this.head.navigation : ''; },
+    id() { return this.$route.params.id || '~'; },
+    item() { return this.head ? this.head.item : null; },
+    crumbs() { return this.head ? this.head.path.concat([this.head.item]) : []; },
+    groups() { return this.mode === 'groups' && this.pager ? this.pager.state.items : []; },
+    tracks() { return this.mode === 'tracks' && this.pager ? this.pager.state.items : []; }
+  },
+  watch: { '$route.fullPath': { immediate: true, handler() { this.load(); } } },
+  methods: {
+    base() { return '/nav/' + encodeURIComponent(this.name); },
+    crumbRoute(c) { return c.id === '~' ? this.base() : this.base() + '/' + encodeURIComponent(c.id); },
+    load() {
+      const name = this.name, id = this.id;
+      this.head = null;
+      this.pager = pagerFor(async p => {
+        const r = await Api.library(this.base() + '/' + encodeURIComponent(id), p);
+        if (name === this.name && id === this.id) {
+          this.head = r;
+          this.mode = r.tracks ? 'tracks' : 'groups';
+        }
+        return { items: r.tracks || r.groups || [], total: r.total };
+      }, 100);
+    },
+    async everything() {
+      if (!this.item) return [];
+      return Api.groupTracks(this.item);
+    },
+    async playAt(i) {
+      if (this.mode === 'tracks') { await this.pager.loadAll(100); playList(this.tracks, { start: i }); }
+    },
+    async playAll(shuffle) {
+      try {
+        const t = await this.everything();
+        if (!t.length) { toast(this.$t('toast.nothing')); return; }
+        playList(t, { shuffle: shuffle });
+      } catch (e) { toast(e.message); }
+    },
+    formatTotal
+  },
+  template: `
+    <section>
+      <nav class="crumbs" v-if="head">
+        <template v-for="(c, i) in crumbs" :key="c.id">
+          <span v-if="i" class="sep">/</span>
+          <router-link v-if="i < crumbs.length - 1" :to="crumbRoute(c)">{{ i === 0 ? navName : c.title }}</router-link>
+          <span v-else>{{ i === 0 ? navName : c.title }}</span>
+        </template>
+      </nav>
+      <header class="page-head" v-if="item">
+        <div class="grow">
+          <h1>{{ item.id === '~' ? navName : item.title }}</h1>
+          <p class="muted">{{ $tn('count.tracks', item.trackCount) }}</p>
+          <div class="row">
+            <button type="button" class="primary" :disabled="!item.trackCount" @click="playAll(false)"><icon name="play"></icon> {{ $t('action.play') }}</button>
+            <button type="button" :disabled="!item.trackCount" @click="playAll(true)"><icon name="shuffle"></icon> {{ $t('player.shuffle') }}</button>
+          </div>
+        </div>
+      </header>
+      <group-grid v-if="groups.length" :items="groups"></group-grid>
+      <track-list v-if="tracks.length" :tracks="tracks" :show-album="true" @play="playAt"></track-list>
+      <infinite-scroll v-if="pager" :key="name + id" :pager="pager" :empty-text="$t('list.empty')"></infinite-scroll>
+    </section>`
+};

@@ -11,10 +11,30 @@ import { formatDuration, formatTotal } from '../core/format.js';
 import { totalDurationMs, snapshot } from '../core/queue.js';
 import { folderRoute } from '../core/urls.js';
 import { parentPath } from '../core/list.js';
+import { formatRate, rateForStep, SPEED_MAX, SPEED_MIN } from '../core/speed.js';
+import { LyricsView } from './LyricsView.js';
+
+export const SpeedControl = {
+  name: 'SpeedControl',
+  setup() { return { player: player, min: SPEED_MIN, max: SPEED_MAX }; },
+  computed: {
+    step() { return this.player.state.speed; },
+    label() { return formatRate(rateForStep(this.step)); }
+  },
+  methods: {
+    set(e) { this.player.setSpeed(Number(e.target.value)); },
+    reset() { this.player.setSpeed(0); }
+  },
+  template: `
+    <span class="speed">
+      <input type="range" class="speed-range" :min="min" :max="max" step="1" :value="step" :aria-label="$t('player.speed')" :title="$t('player.speed')" @input="set">
+      <button type="button" class="speed-label" :class="{ on: step !== 0 }" :title="$t('player.speedReset')" :aria-label="$t('player.speedReset')" @click="reset">{{ label }}</button>
+    </span>`
+};
 
 export const PlayerBar = {
   name: 'PlayerBar',
-  components: { Icon, Cover, PlayerControls, SeekBar, FavButton },
+  components: { Icon, Cover, PlayerControls, SeekBar, FavButton, SpeedControl },
   setup() { return { player: player, ui: ui }; },
   computed: {
     entry() { return this.player.current; },
@@ -46,6 +66,7 @@ export const PlayerBar = {
         <seek-bar></seek-bar>
       </div>
       <div class="pb-right">
+        <speed-control></speed-control>
         <button type="button" class="icon-btn pb-mute" :aria-label="$t('player.mute')" :title="$t('player.mute')" @click="player.toggleMute()"><icon :name="volumeIcon"></icon></button>
         <input type="range" class="volume" min="0" max="1" step="0.02" :value="st.muted ? 0 : st.volume" :aria-label="$t('player.volume')" @input="setVolume">
         <button type="button" class="icon-btn" :class="{ on: ui.queueOpen }" :aria-pressed="ui.queueOpen" :aria-label="$t('queue.title')" :title="$t('queue.title')"
@@ -110,7 +131,7 @@ export const QueuePanel = {
 
 export const FullPlayer = {
   name: 'FullPlayer',
-  components: { Icon, Cover, PlayerControls, SeekBar, TrackInfo, FavButton },
+  components: { Icon, Cover, PlayerControls, SeekBar, TrackInfo, FavButton, SpeedControl, LyricsView },
   setup() { return { player: player, ui: ui }; },
   data() { return { tab: 'playing' }; },
   computed: {
@@ -144,6 +165,7 @@ export const FullPlayer = {
         <div class="fp-tabs" role="tablist">
           <button type="button" role="tab" :aria-selected="tab === 'playing'" :class="{ on: tab === 'playing' }" @click="tab = 'playing'">{{ $t('player.nowPlaying') }}</button>
           <button type="button" role="tab" :aria-selected="tab === 'info'" :class="{ on: tab === 'info' }" @click="tab = 'info'">{{ $t('action.info') }}</button>
+          <button type="button" role="tab" :aria-selected="tab === 'lyrics'" :class="{ on: tab === 'lyrics' }" @click="tab = 'lyrics'">{{ $t('lyrics.title') }}</button>
         </div>
         <fav-button :track="track"></fav-button>
         <button type="button" class="icon-btn" :aria-label="$t('queue.title')" @click="ui.queueOpen = !ui.queueOpen; ui.fullscreen = false"><icon name="queue"></icon></button>
@@ -155,10 +177,14 @@ export const FullPlayer = {
         <p class="fp-sub">{{ track.artist }}<span v-if="track.album"> · {{ track.album }}</span></p>
         <seek-bar></seek-bar>
         <player-controls class="fp-controls"></player-controls>
+        <speed-control class="fp-speed"></speed-control>
         <div v-if="upcoming.length" class="fp-next">
           <h2>{{ $t('player.upNext') }}</h2>
           <ol><li v-for="e in upcoming" :key="e.id">{{ e.track.title || e.track.name }}<span class="muted"> – {{ e.track.artist }}</span></li></ol>
         </div>
+      </div>
+      <div v-else-if="tab === 'lyrics'" class="fp-body fp-lyrics">
+        <lyrics-view :track="track"></lyrics-view>
       </div>
       <div v-else class="fp-body fp-info">
         <track-info :track="track"></track-info>

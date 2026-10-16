@@ -84,3 +84,19 @@ a.icon-btn { text-decoration: none; }
 .group-list { list-style: none; margin: .6rem 0; padding: 0; }
 .group-row { display: flex; align-items: center; gap: .6rem; padding: .15rem .3rem; border-bottom: 1px solid rgba(128,128,128,.25); }
 .group-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* resizable tree pane (desktop only) */
+.library { position: relative; grid-template-columns: var(--tree-w, 17rem) minmax(0, 1fr); }
+.library > .pane-resizer { top: 0; bottom: 0; left: calc(var(--tree-w, 17rem) + .6rem - 4px); }
+@media (max-width: 860px) { .library { grid-template-columns: minmax(0, 1fr); } }
+
+/* metadata editor scope choice */
+.scope { border: 1px solid var(--line); border-radius: 8px; padding: .4rem .7rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+.scope legend { color: var(--muted); font-size: .8rem; padding: 0 .3rem; }
+
+/* directory view switch + list */
+.lib-viewswitch { justify-content: flex-end; margin-bottom: .4rem; }
+.lib-viewswitch button.on { border-color: var(--accent); color: var(--accent); }
+.lib-folderlist { margin-bottom: 1.2rem; }
+.lib-folderlist .group-row { padding: .2rem .3rem; }
+.lib-folderlist .art { width: 2.4rem; height: 2.4rem; flex: none; }

@@ -18,6 +18,13 @@ export const AdminPage = {
   beforeUnmount() { clearInterval(this.timer); },
   methods: {
     formatSize, formatTime,
+    async exportSnapshot(s) {
+      const name = window.prompt('Name of the new playlist', 'Random ' + (s.directory || ''));
+      if (!name || !name.trim()) return;
+      this.error = ''; this.info = '';
+      try { const r = await Api.exportSnapshot(s.context, name.trim()); this.info = 'Playlist "' + r.name + '" created with ' + r.count + ' songs.'; }
+      catch (e) { this.error = e.message; }
+    },
     async exportSettings(part) {
       this.error = ''; this.info = '';
       try {
@@ -176,10 +183,11 @@ export const AdminPage = {
         <p v-if="!snapshots.length" class="muted">No snapshots (they are created when a client browses a Random N container).</p>
         <div class="scroll" v-else>
           <table>
-            <thead><tr><th>Directory</th><th>Client</th><th>N</th><th>Tracks</th><th>Last activity</th><th>Streams</th></tr></thead>
+            <thead><tr><th>Directory</th><th>Client</th><th>N</th><th>Tracks</th><th>Last activity</th><th>Streams</th><th></th></tr></thead>
             <tbody><tr v-for="s in snapshots" :key="s.context">
               <td>{{ s.directory }}</td><td>{{ s.clientIp }}<div class="muted small">{{ s.clientAgent }}</div></td>
-              <td>{{ s.requestedSize }}</td><td>{{ s.tracks }}</td><td>{{ formatTime(s.lastActivity) }}</td><td>{{ s.activeStreams }}</td></tr></tbody>
+              <td>{{ s.requestedSize }}</td><td>{{ s.tracks }}</td><td>{{ formatTime(s.lastActivity) }}</td><td>{{ s.activeStreams }}</td>
+              <td><button type="button" :disabled="busy || !s.tracks" @click="exportSnapshot(s)">Save as playlist&hellip;</button></td></tr></tbody>
           </table>
         </div>
       </div>

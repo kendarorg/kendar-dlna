@@ -44,7 +44,7 @@ export function bindMediaSession(player, nav, MetadataCtor) {
     const now = Date.now();
     if (now - lastPush < 1000 || !duration || !ms.setPositionState) return;
     lastPush = now;
-    try { ms.setPositionState({ duration: duration, position: Math.min(position, duration), playbackRate: 1 }); } catch (e) { /* ignore */ }
+    try { ms.setPositionState({ duration: duration, position: Math.min(position, duration), playbackRate: player.rate || 1 }); } catch (e) { /* ignore */ }
   });
   return true;
 }

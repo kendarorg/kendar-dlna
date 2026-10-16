@@ -51,6 +51,27 @@ public final class PlaylistService {
         return p;
     }
 
+    /** Creates a playlist that already holds {@code paths} (checked against the catalog), in one write. */
+    public synchronized Playlist createWith(String name, List<String> paths) {
+        if (paths == null || paths.isEmpty()) {
+            throw new CurationException(CurationException.INVALID, "No songs given");
+        }
+        String clean = cleanName(name);
+        List<String> songs = new ArrayList<>();
+        for (String p : paths) {
+            songs.add(knownTrack(p));
+        }
+        checkSize(songs);
+        Playlist p = new Playlist(freshKey(clean), clean, songs);
+        write(p);
+        catalog.update(cur -> {
+            List<Playlist> all = new ArrayList<>(cur.playlistDefinitions());
+            all.add(p);
+            return CatalogEdits.withPlaylists(cur, all);
+        });
+        return p;
+    }
+
     public synchronized Playlist rename(String key, String name) {
         Playlist cur = existing(key);
         return store(new Playlist(cur.key(), cleanName(name), cur.songs()));
@@ -113,6 +134,9 @@ public final class PlaylistService {
     /** A song file was renamed: every playlist entry of {@code from} (or a section of it) now points to {@code to}. */
     public synchronized void renameSong(String from, String to) {
         for (Playlist p : List.copyOf(catalog.current().playlistDefinitions())) {
+            if (p.system()) {
+                continue;   // read from a file in the library, never rewritten
+            }
             List<String> songs = new ArrayList<>(p.songs());
             boolean changed = false;
             for (int i = 0; i < songs.size(); i++) {
@@ -166,8 +190,12 @@ public final class PlaylistService {
         if (key == null || !KEY.matcher(key).matches()) {
             throw new CurationException(CurationException.INVALID, "Invalid playlist key: " + key);
         }
-        return catalog.current().playlistDefinitions().stream().filter(p -> p.key().equals(key)).findFirst()
+        Playlist found = catalog.current().playlistDefinitions().stream().filter(p -> p.key().equals(key)).findFirst()
                 .orElseThrow(() -> new CurationException(CurationException.NOT_FOUND, "Unknown playlist: " + key));
+        if (found.system()) {
+            throw new CurationException(CurationException.NOT_EDITABLE, "System playlists are read-only: " + key);
+        }
+        return found;
     }
 
     private String knownTrack(String path) {

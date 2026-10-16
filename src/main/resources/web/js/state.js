@@ -10,6 +10,7 @@ export const ui = reactive({
   menu: null,             // {x, y, subject}: the track/album/folder action menu
   info: null,             // a track shown in the info dialog
   addTo: null,            // {title, tracks(): Promise<track[]>}: the "add to playlist" dialog
+  consent: null,          // {title, lines, confirmLabel, resolve}: the typed-consent dialog (see askConsent)
   toast: ''
 });
 
@@ -25,3 +26,17 @@ export function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { ui.toast = ''; }, 3000);
 }
+
+/**
+ * Opens the consent dialog: resolves true only when the user typed the exact phrase and confirmed, false otherwise.
+ * `lines` are the facts shown above the text box (counts, what is removed); `confirmLabel` is the button text.
+ */
+export function askConsent(opts) {
+  return new Promise(resolve => {
+    if (ui.consent && ui.consent.resolve) ui.consent.resolve(false);
+    ui.consent = { title: opts.title, lines: opts.lines || [], confirmLabel: opts.confirmLabel, resolve: resolve };
+  });
+}
+
+/** The configured tag navigations (names), used to build the sidebar and the navigation pages. */
+export const navs = reactive({ items: [], loaded: false });

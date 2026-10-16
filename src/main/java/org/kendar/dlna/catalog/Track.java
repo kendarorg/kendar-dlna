@@ -43,6 +43,11 @@ public record Track(RootRef ref, long mtime, long size, Format format, TrackTags
                 embeddedArt, sampleCount, renderedMillis, millis, segment);
     }
 
+    /** The values of an extra tag (see {@link TrackTags#extra}). */
+    public java.util.List<String> extra(String tag) {
+        return tags.extra(tag);
+    }
+
     /** True for a virtual track (a cue sheet track or a chapter of a larger file). */
     public boolean isSegment() {
         return segment != null;

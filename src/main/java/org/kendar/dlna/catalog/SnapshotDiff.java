@@ -19,6 +19,11 @@ public final class SnapshotDiff {
 
     /** The changed container keys; empty when the two snapshots have the same content. */
     public static Set<String> changedContainers(Snapshot before, Snapshot after) {
+        return changedContainers(before, after, false);
+    }
+
+    /** @param rootNavigations the library roots list configured navigations (whole-library pools) */
+    public static Set<String> changedContainers(Snapshot before, Snapshot after, boolean rootNavigations) {
         Set<RootRef> dirty = new HashSet<>();   // directories whose own listing changed
         Set<String> keys = new HashSet<>();
 
@@ -74,7 +79,7 @@ public final class SnapshotDiff {
         for (RootRef a : virtualDirty) {
             Folder fa = after.folder(a).orElse(null);
             Folder fb = before.folder(a).orElse(null);
-            if ((fa != null && hasVirtual(fa)) || (fb != null && hasVirtual(fb))) {
+            if ((fa != null && hasVirtual(after, fa, rootNavigations)) || (fb != null && hasVirtual(before, fb, rootNavigations))) {
                 keys.add(ContainerKeys.virtual((fa != null ? fa : fb).id()));
             }
         }
@@ -92,8 +97,10 @@ public final class SnapshotDiff {
         }
     }
 
-    private static boolean hasVirtual(Folder f) {
-        return f.settings().random() > 0 || f.settings().recent() > 0 || !f.settings().views().isEmpty();
+    private static boolean hasVirtual(Snapshot snap, Folder f, boolean rootNavigations) {
+        // library roots show every configured navigation by default; other directories when they list or inherit some
+        return f.settings().random() > 0 || f.settings().recent() > 0 || !f.settings().views().isEmpty()
+                || (f.isRoot() && rootNavigations) || snap.effectiveSettings(f.ref()).navigations() != null;
     }
 
     /** Folder equality ignoring the directory mtime unless it drives the sort order. */

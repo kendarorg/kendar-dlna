@@ -114,9 +114,20 @@ public final class Main {
             LOG.warning("ffmpeg NOT FOUND (" + transcoding.ffmpegBinary + "): WMA, APE, DSD, WavPack, MPC and m4b files will be listed as unsupported. "
                     + "Install ffmpeg or set transcode.ffmpegPath in config.json / KENDAR_FFMPEG_PATH");
         }
-        LibraryScanner scanner = new LibraryScanner(transcoding.tagReader(), Clock.systemUTC(), tc.enabled());
+        org.kendar.dlna.catalog.NavigationRegistry navigationRegistry =
+                new org.kendar.dlna.catalog.NavigationRegistry(config.navigations(), config.extraTags());
+        Path configuredDir = configDir;
+        Path tagsFile = (java.nio.file.Files.isDirectory(configuredDir) && java.nio.file.Files.isWritable(configuredDir)
+                ? configuredDir : dataDir).resolve("tags.json");
+        org.kendar.dlna.ingestion.TagDiscovery tagDiscovery = new org.kendar.dlna.ingestion.TagDiscovery();
+        tagDiscovery.mergeKnown(org.kendar.dlna.ingestion.TagDiscovery.load(tagsFile));
+        navigationRegistry.discovered(tagDiscovery::counts);
+        transcoding.withTags(() -> navigationRegistry.state().extraTags(), tagDiscovery);
+        LibraryScanner scanner = new LibraryScanner(transcoding.tagReader(), Clock.systemUTC(), tc.enabled())
+                .withTagDiscovery(tagDiscovery, tagsFile);
         JsonCatalogStore store = new JsonCatalogStore(dataDir,
-                RootsFingerprint.of(roots.roots()) + transcoding.fingerprintSuffix() + (tc.enabled() ? "|sections" : ""),
+                RootsFingerprint.of(roots.roots()) + transcoding.fingerprintSuffix() + (tc.enabled() ? "|sections" : "")
+                        + (config.extraTags().isEmpty() ? "" : "|extra:" + String.join(",", new java.util.TreeSet<>(config.extraTags()))),
                 version == null ? "dev" : version, false);
         long t0 = System.nanoTime();
         Duration catchUp = Duration.ofHours(config.scan().catchUpThresholdHours());
@@ -132,7 +143,10 @@ public final class Main {
                 new NetworkPolicy(config.network().lanCidrs(), config.network().trustedProxies()));
         Shuffle shuffle = new Shuffle(holder::current, Clock.systemUTC(),
                 Duration.ofMinutes(config.random().ttlMinutes()));
-        Views views = new Views(holder::current, config.views().bucketThreshold());
+        Views views = new Views(holder::current, config.views().bucketThreshold())
+                .withRangeDefaults(config.views().subitems(), config.views().ranges())
+                .withNavigations(navigationRegistry);
+        catalog.rootNavigations(() -> !views.navigations().state().navigations().isEmpty());
         TranscodeCache cache = new TranscodeCache(dataDir.resolve("transcode"), tc.cacheMaxMb() * 1024L * 1024L,
                 Duration.ofHours(tc.cacheTtlHours()), Clock.systemUTC());
         TranscodeService transcode = new TranscodeService(transcoding.transcoder, cache, tc.enabled(),
@@ -184,10 +198,21 @@ public final class Main {
                 ResetPasswordWatcher.INTERVAL_SECONDS, TimeUnit.SECONDS);
         TagService tagService = new TagService(catalog, roots, new PerFormatTagWriter(),
                 transcoding.plainTagReader());
+        tagService.bulk().changeLog(dataDir.resolve("tag-changes.log"));
+        org.kendar.dlna.lyrics.LyricsProvider lyricsProvider = null;
+        if (config.lyrics().enabled()) {
+            lyricsProvider = org.kendar.dlna.lyrics.LyricsProviders.create(config.lyrics().provider(),
+                    config.lyrics().providers().get(config.lyrics().provider()),
+                    Duration.ofSeconds(config.lyrics().timeoutSeconds()),
+                    "Kendar-DLNA/" + (version == null ? "dev" : version));
+            LOG.info("Lyrics lookup enabled with provider '" + config.lyrics().provider() + "' (admin action only)");
+        }
+        org.kendar.dlna.lyrics.LyricsService lyricsService = new org.kendar.dlna.lyrics.LyricsService(holder::current,
+                roots, lyricsProvider, config.lyrics().minIntervalMillis());
         AdminServices adminServices = new AdminServices(catalog, rescans, tagService,
                 new FolderService(catalog, roots, tagService), new PlaylistService(catalog, playlistsDir), shuffle,
                 activeStreams, cache, () -> prefetcher == null ? 0 : prefetcher.activeJobs(), BuildInfo.load(), clock,
-                configDir, ConfigLoader::validateJson);
+                configDir, ConfigLoader::validateJson, views.navigations(), lyricsService);
         AdminApi adminApi = new AdminApi(adminServices, identity,
                 new LibraryQuery(holder::current, views, artwork),
                 new WebStream(holder::current, roots, streams, transcode, prefetcher, activeStreams));

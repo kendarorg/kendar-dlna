@@ -16,7 +16,9 @@ export function trackSubject(track) {
 }
 
 export function groupSubject(item) {
-  return { kind: item.type === 'all_tracks' ? 'album' : item.type, title: item.title, item: item, tracks: () => Api.groupTracks(item) };
+  // generic navigation levels (group, bucket) behave like a genre: play / queue / open
+  const kind = item.type === 'all_tracks' ? 'album' : (item.type === 'group' || item.type === 'bucket' ? 'genre' : item.type);
+  return { kind: kind, title: item.title, item: item, tracks: () => Api.groupTracks(item) };
 }
 
 export function folderSubject(folder) {

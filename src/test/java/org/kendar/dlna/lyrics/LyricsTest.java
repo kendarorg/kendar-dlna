@@ -1,0 +1,236 @@
+package org.kendar.dlna.lyrics;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.sound.midi.MetaMessage;
+import javax.sound.midi.MidiSystem;
+import javax.sound.midi.Sequence;
+import javax.sound.midi.Track;
+
+import org.jaudiotagger.audio.AudioFile;
+import org.jaudiotagger.audio.AudioFileIO;
+import org.jaudiotagger.tag.FieldKey;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.kendar.dlna.catalog.Format;
+import org.kendar.dlna.curation.CurationException;
+import org.kendar.dlna.shared.RootRef;
+import org.kendar.dlna.testutil.AudioFiles;
+import org.kendar.dlna.testutil.LibraryFixture;
+
+class LyricsTest {
+
+    @TempDir
+    Path tmp;
+
+    // ---- the LRC parser ----
+
+    @Test
+    void parsesTimedLinesWithSeveralTagsAndAnOffset() {
+        Lyrics l = LrcParser.parse("[ar:Someone]\n[offset:+500]\n[00:01.50]Hello\n[00:10.00][00:20.5]Again\n", "lrc");
+
+        assertThat(l.synced()).isTrue();
+        assertThat(l.lines()).extracting(Lyrics.Line::startMillis).containsExactly(1000L, 9500L, 20000L);
+        assertThat(l.lines()).extracting(Lyrics.Line::text).containsExactly("Hello", "Again", "Again");
+        assertThat(l.toLrc()).startsWith("[00:01.00]Hello\n");
+    }
+
+    @Test
+    void textWithoutTimeTagsIsPlain() {
+        Lyrics l = LrcParser.parse("Line one\r\nLine two\r\n\r\n", "txt");
+
+        assertThat(l.synced()).isFalse();
+        assertThat(l.lines()).extracting(Lyrics.Line::text).containsExactly("Line one", "Line two");
+        assertThat(l.toLrc()).isEqualTo("Line one\nLine two\n");
+        assertThat(LrcParser.parse("[ti:Only a header]\n", "lrc").isEmpty()).isTrue();
+    }
+
+    // ---- what a track already has ----
+
+    @Test
+    void aSidecarLrcBeatsATxtAndWindows1252Works() throws IOException {
+        Path audio = tmp.resolve("song.mp3");
+        Files.write(audio, new byte[] { 0 });
+        Files.write(tmp.resolve("song.txt"), "plain".getBytes());
+        assertThat(LocalLyrics.read(audio, Format.MP3).orElseThrow().synced()).isFalse();
+
+        Files.write(tmp.resolve("song.lrc"), "[00:02.00]café".getBytes(Charset.forName("windows-1252")));
+        Lyrics l = LocalLyrics.read(audio, Format.MP3).orElseThrow();
+        assertThat(l.source()).isEqualTo("lrc");
+        assertThat(l.lines().get(0).text()).isEqualTo("café");
+        assertThat(LocalLyrics.read(tmp.resolve("nothing.mp3"), Format.MP3)).isEmpty();
+    }
+
+    @Test
+    void embeddedLyricsAreReadFromTheTag() throws Exception {
+        Path flac = tmp.resolve("tagged.flac");
+        AudioFiles.fixture("sweep.flac", flac);
+        AudioFile af = AudioFileIO.read(flac.toFile());
+        af.getTagOrCreateAndSetDefault().setField(FieldKey.LYRICS, "[00:03.00]Inside the file");
+        af.commit();
+
+        Lyrics l = LocalLyrics.read(flac, Format.FLAC).orElseThrow();
+
+        assertThat(l.source()).isEqualTo("tag");
+        assertThat(l.synced()).isTrue();
+        assertThat(l.lines().get(0).startMillis()).isEqualTo(3000L);
+    }
+
+    @Test
+    void karaokeLyricEventsAreTimedWithTheTempoMap() throws Exception {
+        Sequence seq = new Sequence(Sequence.PPQ, 480);
+        Track track = seq.createTrack();
+        track.add(new javax.sound.midi.MidiEvent(new MetaMessage(0x51, new byte[] { 0x07, (byte) 0xA1, 0x20 }, 3), 0));   // 500000 us
+        track.add(new javax.sound.midi.MidiEvent(lyric("Hel"), 0));
+        track.add(new javax.sound.midi.MidiEvent(lyric("lo/"), 480));      // 500 ms
+        track.add(new javax.sound.midi.MidiEvent(lyric("World"), 960));    // 1000 ms
+        Path kar = tmp.resolve("song.kar");
+        try (var out = Files.newOutputStream(kar)) {
+            MidiSystem.write(seq, 1, out);
+        }
+
+        Lyrics l = LocalLyrics.read(kar, Format.MIDI).orElseThrow();
+
+        assertThat(l.source()).isEqualTo("kar");
+        assertThat(l.lines()).extracting(Lyrics.Line::text).containsExactly("Hello", "World");
+        assertThat(l.lines()).extracting(Lyrics.Line::startMillis).containsExactly(0L, 1000L);
+    }
+
+    private static MetaMessage lyric(String text) throws Exception {
+        byte[] b = text.getBytes();
+        return new MetaMessage(0x05, b, b.length);
+    }
+
+    // ---- the provider ----
+
+    @Test
+    void lrclibPrefersSyncedLyricsAndFallsBackToSearchOn404() throws Exception {
+        List<String> urls = new ArrayList<>();
+        LrclibProvider.Http http = uri -> {
+            urls.add(uri.toString());
+            if (uri.getPath().endsWith("/get")) {
+                throw new LrclibProvider.NotFound("no");
+            }
+            return "[{\"duration\":200,\"plainLyrics\":\"just text\"},"
+                    + "{\"duration\":201,\"syncedLyrics\":\"[00:01.00]Synced\",\"plainLyrics\":\"Synced\"},"
+                    + "{\"duration\":999,\"syncedLyrics\":\"[00:01.00]Other recording\"}]";
+        };
+        LrclibProvider p = new LrclibProvider("https://x.example/api/", http);
+
+        List<Lyrics> found = p.find(new LyricsProvider.Query("Ann Lee", "A Song", "Blue", 200));
+
+        assertThat(urls.get(0)).startsWith("https://x.example/api/get?track_name=A+Song&artist_name=Ann+Lee")
+                .contains("album_name=Blue").contains("duration=200");
+        assertThat(found).hasSize(2);
+        assertThat(found.get(0).synced()).isTrue();
+        assertThat(found.get(0).lines().get(0).text()).isEqualTo("Synced");
+        assertThat(found.stream().map(Lyrics::text)).doesNotContain("Other recording");
+        assertThat(p.find(new LyricsProvider.Query("x", " ", null, 0))).isEmpty();
+    }
+
+    @Test
+    void lrclibReportsServiceErrors() {
+        LrclibProvider p = new LrclibProvider(null, (URI u) -> {
+            throw new IOException("lyrics service answered 500");
+        });
+        assertThatThrownBy(() -> p.find(new LyricsProvider.Query("a", "b", null, 0))).isInstanceOf(IOException.class);
+    }
+
+    // ---- the service ----
+
+    private static LyricsProvider fake(List<Lyrics> answer, List<LyricsProvider.Query> asked) {
+        return new LyricsProvider() {
+            @Override
+            public String id() {
+                return "fake";
+            }
+
+            @Override
+            public List<Lyrics> find(Query q) {
+                asked.add(q);
+                return answer;
+            }
+        };
+    }
+
+    @Test
+    void lookupSavesASidecarAndNothingElseWithoutAProvider() throws IOException {
+        LibraryFixture lib = new LibraryFixture(tmp);
+        List<LyricsProvider.Query> asked = new ArrayList<>();
+        Lyrics synced = LrcParser.parse("[00:01.00]La la", "fake");
+        LyricsService svc = new LyricsService(lib.catalog::current, lib.files, fake(List.of(synced), asked), 0);
+        RootRef ref = RootRef.parse("main/Album/03 three.mp3");
+
+        assertThat(svc.local(ref)).isEmpty();
+        assertThat(svc.lookup(ref)).containsExactly(synced);
+        assertThat(asked.get(0).title()).isNotBlank();
+        assertThat(svc.save(ref, synced)).isEqualTo("03 three.lrc");
+        assertThat(Files.readString(lib.music.resolve("Album/03 three.lrc"))).isEqualTo("[00:01.00]La la\n");
+        assertThat(svc.local(ref).orElseThrow().synced()).isTrue();
+        assertThat(svc.save(ref, LrcParser.parse("just words", "x"))).isEqualTo("03 three.txt");
+
+        LyricsService off = new LyricsService(lib.catalog::current, lib.files, null, 0);
+        assertThat(off.providerId()).isNull();
+        assertThatThrownBy(() -> off.lookup(ref)).isInstanceOf(CurationException.class);
+        assertThatThrownBy(() -> off.startFolder(RootRef.parse("main/Album"), false)).isInstanceOf(CurationException.class);
+        assertThatThrownBy(() -> svc.save(RootRef.parse("main/Nope.mp3"), synced)).isInstanceOf(CurationException.class);
+    }
+
+    @Test
+    void theFolderJobReviewsEveryTrackAndOnlyTheAppliedOnesAreWritten() throws Exception {
+        LibraryFixture lib = new LibraryFixture(tmp);
+        Files.writeString(lib.music.resolve("Album/01 one.lrc"), "[00:01.00]Already there");
+        Lyrics a = LrcParser.parse("[00:01.00]One", "fake");
+        Lyrics b = LrcParser.parse("Two different", "fake");
+        int[] call = { 0 };
+        LyricsProvider provider = new LyricsProvider() {
+            @Override
+            public String id() {
+                return "fake";
+            }
+
+            @Override
+            public List<Lyrics> find(Query q) throws IOException {
+                return switch (call[0]++) {
+                    case 0 -> List.of(a);
+                    case 1 -> List.of(a, b);
+                    default -> List.of();
+                };
+            }
+        };
+        LyricsService svc = new LyricsService(lib.catalog::current, lib.files, provider, 0);
+
+        svc.startFolder(RootRef.parse("main/Album"), false);
+        for (int i = 0; i < 200 && svc.status().running(); i++) {
+            Thread.sleep(25);
+        }
+
+        LyricsService.Status st = svc.status();
+        assertThat(st.running()).isFalse();
+        assertThat(st.done()).isEqualTo(4);
+        assertThat(st.items()).extracting(LyricsService.Item::outcome).containsExactlyInAnyOrder(
+                LyricsService.Outcome.HAS_LYRICS, LyricsService.Outcome.MATCHED, LyricsService.Outcome.AMBIGUOUS,
+                LyricsService.Outcome.NOT_FOUND);
+        assertThat(lib.music.resolve("Album")).isDirectory();
+        long lrcBefore = Files.list(lib.music.resolve("Album")).filter(p -> p.toString().endsWith(".lrc")).count();
+        assertThat(lrcBefore).as("nothing is written before apply").isEqualTo(1);
+
+        String matched = st.items().stream().filter(i -> i.outcome() == LyricsService.Outcome.MATCHED).findFirst()
+                .orElseThrow().path();
+        assertThat(svc.applyFolder(List.of(matched))).containsExactly(matched);
+        assertThat(svc.applyFolder(List.of(matched))).as("applied once").isEmpty();
+        assertThat(svc.status().items().stream().filter(i -> i.path().equals(matched)).findFirst().orElseThrow()
+                .applied()).isTrue();
+        assertThat(Files.list(lib.music.resolve("Album")).filter(p -> p.toString().endsWith(".lrc")).count())
+                .isEqualTo(2);
+    }
+}

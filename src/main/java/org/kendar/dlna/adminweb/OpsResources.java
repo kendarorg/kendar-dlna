@@ -32,6 +32,9 @@ final class OpsResources {
     }
 
     ApiResponse handle(ApiRequest req, List<String> seg) {
+        if (seg.size() == 2 && seg.get(0).equals("snapshots") && seg.get(1).equals("to-playlist")) {
+            return req.method().equals("POST") ? exportSnapshot(req) : null;
+        }
         if (seg.size() != 1) {
             return null;
         }
@@ -143,6 +146,22 @@ final class OpsResources {
                     "lastActivity", s.lastActivity().toString(), "activeStreams", s.activeStreams()));
         }
         return ApiResponse.ok(Dto.obj("snapshots", out));
+    }
+
+    /**
+     * Body {@code {"context": "...", "name": "..."}}: saves the tracks of a Random N snapshot, in order, as a new
+     * (global) playlist. Entries a rescan removed since are skipped.
+     */
+    private ApiResponse exportSnapshot(ApiRequest req) {
+        JsonNode body = req.json();
+        String context = body.path("context").asText(null);
+        RandomSnapshot s = context == null ? null : svc.shuffle().find(context).orElse(null);
+        if (s == null) {
+            throw ApiException.notFound("Unknown or expired snapshot: " + context);
+        }
+        List<String> paths = s.tracks(svc.catalog().current()).stream().map(t -> t.ref().qualified()).toList();
+        org.kendar.dlna.catalog.Playlist p = svc.playlists().createWith(body.path("name").asText(null), paths);
+        return ApiResponse.json(201, Dto.obj("key", p.key(), "name", p.name(), "count", p.songs().size()));
     }
 
     private ApiResponse version() {

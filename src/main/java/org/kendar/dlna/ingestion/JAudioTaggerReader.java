@@ -2,9 +2,11 @@ package org.kendar.dlna.ingestion;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -31,9 +33,93 @@ public final class JAudioTaggerReader implements TagReader {
         Logger.getLogger("org.jaudiotagger").setLevel(Level.OFF);
     }
 
+    private final Supplier<Collection<String>> extraTags;
+    private final TagDiscovery discovery;
+
+    public JAudioTaggerReader() {
+        this(() -> List.of(), null);
+    }
+
+    /**
+     * @param extraTags names (any case) of the extra tags to keep in the tracks: their values are read from the file
+     * @param discovery receives the non-standard tag names of every file read (null = not collected)
+     */
+    public JAudioTaggerReader(Supplier<Collection<String>> extraTags, TagDiscovery discovery) {
+        this.extraTags = extraTags;
+        this.discovery = discovery;
+    }
+
     @Override
     public boolean supports(Format format) {
         return SUPPORTED.contains(format);
+    }
+
+    /** Tag names every format has under some spelling: not worth listing as extra tags. */
+    private static final Set<String> STANDARD = Set.of("title", "artist", "album", "albumartist", "album artist",
+            "genre", "date", "year", "originaldate", "tracknumber", "track", "totaltracks", "tracktotal",
+            "discnumber", "disc", "totaldiscs", "disctotal", "composer", "comment", "description", "encoder",
+            "encodedby", "software", "lyrics", "unsyncedlyrics", "language", "compilation", "copyright", "isrc",
+            "performer", "label", "publisher", "organization", "vendor");
+
+    /**
+     * The non-standard text tags of a file by lower-case name (ID3 user text frames, Vorbis comments, MP4 free-form
+     * atoms), with their values. Standard fields are left out.
+     */
+    static java.util.Map<String, List<String>> customTags(Tag tag) {
+        java.util.Map<String, List<String>> out = new java.util.TreeMap<>();
+        try {
+            for (java.util.Iterator<org.jaudiotagger.tag.TagField> it = tag.getFields(); it.hasNext();) {
+                org.jaudiotagger.tag.TagField f = it.next();
+                String name = null;
+                String content = null;
+                if (f instanceof org.jaudiotagger.tag.id3.AbstractID3v2Frame frame
+                        && frame.getBody() instanceof org.jaudiotagger.tag.id3.framebody.FrameBodyTXXX body) {
+                    name = body.getDescription();
+                    content = body.getText();
+                } else if (f instanceof org.jaudiotagger.tag.vorbiscomment.VorbisCommentTagField vc) {
+                    name = vc.getId();
+                    content = vc.getContent();
+                } else if (f instanceof org.jaudiotagger.tag.mp4.field.Mp4TagReverseDnsField rd) {
+                    name = rd.getDescriptor();
+                    content = rd.getContent();
+                }
+                if (name == null || content == null || content.isBlank()) {
+                    continue;
+                }
+                String key = name.strip().toLowerCase(java.util.Locale.ROOT);
+                if (key.isEmpty() || STANDARD.contains(key)) {
+                    continue;
+                }
+                List<String> values = out.computeIfAbsent(key, k -> new ArrayList<>());
+                for (String v : content.split("\u0000")) {
+                    if (!v.isBlank() && !values.contains(v.strip())) {
+                        values.add(v.strip());
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            // unreadable extras never fail the track
+        }
+        out.values().removeIf(List::isEmpty);
+        return out;
+    }
+
+    private TrackTags withExtras(TrackTags tags, Tag tag) {
+        java.util.Map<String, List<String>> custom = customTags(tag);
+        if (custom.isEmpty()) {
+            return tags;
+        }
+        if (discovery != null) {
+            discovery.seen(custom.keySet());
+        }
+        java.util.Map<String, List<String>> keep = new java.util.TreeMap<>();
+        for (String wanted : extraTags.get()) {
+            List<String> v = custom.get(wanted.strip().toLowerCase(java.util.Locale.ROOT));
+            if (v != null) {
+                keep.put(wanted.strip().toLowerCase(java.util.Locale.ROOT), v);
+            }
+        }
+        return keep.isEmpty() ? tags : tags.withExtras(keep);
     }
 
     @Override
@@ -63,6 +149,7 @@ public final class JAudioTaggerReader implements TagReader {
                     leadingInt(text(tag, FieldKey.DISC_NO)), leadingInt(text(tag, FieldKey.DISC_TOTAL)),
                     texts(tag, FieldKey.ARTIST), texts(tag, FieldKey.ALBUM_ARTIST), texts(tag, FieldKey.GENRE),
                     text(tag, FieldKey.COMPOSER), texts(tag, FieldKey.COMPOSER));
+            tags = withExtras(tags, tag);
             boolean art = !tag.getArtworkList().isEmpty();
             return new TrackMeta(tags, millis, (int) h.getBitRateAsNumber(), h.getSampleRateAsNumber(), channels,
                     art, 0, actual);

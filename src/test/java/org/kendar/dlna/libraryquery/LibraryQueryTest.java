@@ -85,6 +85,30 @@ class LibraryQueryTest {
         admin = user("root", Role.ADMIN);
     }
 
+    @Test
+    void navigationsAreBrowsableOverTheCallersRootsOnly() {
+        views.withNavigations(new org.kendar.dlna.catalog.NavigationRegistry(List.of(
+                new org.kendar.dlna.catalog.Navigation("Artists", null, null, List.of("artist", "album", "title"))),
+                List.of()));
+
+        assertThat(query.navigations().get("items").toString()).contains("Artists");
+
+        Map<String, Object> top = query.navigation(lena, "Artists", Map.of());
+        assertThat(top.toString()).contains("Alice").doesNotContain("Bob").doesNotContain("Gamma");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> groups = (List<Map<String, Object>>) top.get("groups");
+        assertThat(groups).isNotEmpty();
+        String aliceId = (String) groups.get(0).get("id");
+
+        Map<String, Object> alice = query.navigation(lena, "artists", Map.of("node", aliceId));
+        assertThat(alice.get("path").toString()).contains("Artists");
+        assertThat(alice.get("groups").toString()).contains("First").contains("All tracks");
+
+        Map<String, Object> adminTop = query.navigation(admin, "Artists", Map.of());
+        assertThat(adminTop.toString()).contains("Bob");
+        assertThatThrownBy(() -> query.navigation(lena, "Nope", Map.of())).isInstanceOf(QueryException.class);
+    }
+
     private void tag(String path, String title, String artist, String album, String genre, String trackNo) {
         tags.writeOne(RootRef.parse(path), new TagEdit(title, artist, album, artist, genre, "1999", trackNo, null,
                 null, null));

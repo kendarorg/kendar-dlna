@@ -168,6 +168,9 @@ public final class Snapshot {
         Map<String, ResolvedPlaylist> byId = new LinkedHashMap<>();
         for (Playlist p : playlists) {
             ResolvedPlaylist r = resolve(p, tm, unsupportedRefs);
+            if (p.system() && r.entries().isEmpty()) {
+                continue;   // a system playlist none of whose files is in the library is not shown
+            }
             if (byId.putIfAbsent(r.id(), r) != null) {
                 throw new IllegalArgumentException("Duplicate playlist: " + p.key());
             }
@@ -235,6 +238,9 @@ public final class Snapshot {
             } else {
                 entries.add(new ResolvedPlaylist.Entry(song, null, ResolvedPlaylist.Status.MISSING));
             }
+        }
+        if (p.system()) {
+            entries.removeIf(e -> e.status() != ResolvedPlaylist.Status.OK);   // only the files that exist
         }
         return new ResolvedPlaylist(p, entries);
     }

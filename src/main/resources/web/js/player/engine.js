@@ -13,9 +13,12 @@ export function createEngine(createAudio) {
   const bus = createEmitter();
   let volume = 1;
   let muted = false;
+  let rate = 1;
 
   els.forEach((el, i) => {
     el.preload = 'auto';
+    el.preservesPitch = true;
+    el.webkitPreservesPitch = true;
     const mine = () => i === primary;
     const time = () => {
       if (mine()) bus.emit('time', { position: el.currentTime || 0, duration: Number.isFinite(el.duration) ? el.duration : 0 });
@@ -34,6 +37,11 @@ export function createEngine(createAudio) {
 
   function applyVolume() {
     for (const el of els) { el.volume = volume; el.muted = muted; }
+  }
+
+  // Setting src resets playbackRate to defaultPlaybackRate, so both are kept in step.
+  function applyRate() {
+    for (const el of els) { el.defaultPlaybackRate = rate; el.playbackRate = rate; }
   }
 
   function startElement(el) {
@@ -67,6 +75,7 @@ export function createEngine(createAudio) {
       }
       const el = els[primary];
       applyVolume();
+      applyRate();
       try { el.currentTime = startAt || 0; } catch (e) { /* not seekable yet */ }
       startElement(el);
     },
@@ -85,6 +94,8 @@ export function createEngine(createAudio) {
     seek(seconds) { try { els[primary].currentTime = Math.max(0, seconds); } catch (e) { /* ignore */ } },
     setVolume(v) { volume = Math.min(1, Math.max(0, v)); applyVolume(); },
     setMuted(m) { muted = !!m; applyVolume(); },
+    /** Playback speed multiplier; the pitch is preserved (time stretch in the browser). */
+    setRate(r) { rate = Math.min(4, Math.max(0.25, Number(r) || 1)); applyRate(); },
     get position() { return els[primary].currentTime || 0; },
     get paused() { return els[primary].paused; }
   };

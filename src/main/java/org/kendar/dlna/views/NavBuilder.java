@@ -222,7 +222,10 @@ final class NavBuilder {
         List<Group> out = new ArrayList<>();
         byKey.forEach((key, acc) -> out.add(new Group(acc.variants.isEmpty() ? unknown : acc.variants.best(),
                 StableIds.id("vg", tag.toLowerCase(Locale.ROOT), key), type, null, null, acc.pool)));
-        out.sort(Comparator.comparing(Group::name, Normalizer.NATURAL));
+        // real values first (bitrate bands by quality, the rest naturally), the "Unknown ..." group last
+        out.sort(Comparator.comparing((Group g) -> g.name().equals(unknown))
+                .thenComparingInt((Group g) -> TagValues.rank(tag, g.name()))
+                .thenComparing(Group::name, Normalizer.NATURAL));
         return out;
     }
 

@@ -61,16 +61,29 @@ public final class TagValues {
         if (k < 128) {
             return "under 128 kbps";
         }
-        if (k < 160) {
+        if (k < 192) {
             return "128 kbps";
         }
-        if (k <= 224) {
-            return "160-224 kbps";
+        if (k < 256) {
+            return "192 kbps";
         }
-        if (k <= 288) {
+        if (k < 320) {
             return "256 kbps";
         }
         return "320 kbps";
+    }
+
+    /** The bands of {@link #bitrateBand}, best quality first, unknowns last: the order the groups are listed in. */
+    private static final List<String> BITRATE_ORDER = List.of("lossless", "320 kbps", "256 kbps", "192 kbps",
+            "128 kbps", "under 128 kbps", "unknown", "n/a");
+
+    /** Position of a group inside a virtual tag, or -1 when the tag is listed alphabetically. */
+    public static int rank(String tag, String value) {
+        return switch (tag.toLowerCase(Locale.ROOT)) {
+            case "bitrate" -> BITRATE_ORDER.indexOf(value);
+            case "type" -> ANALOG.equals(value) ? 0 : 1;
+            default -> -1;
+        };
     }
 
     static boolean lossless(Format f) {

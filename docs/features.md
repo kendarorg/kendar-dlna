@@ -279,8 +279,8 @@ edited live in the admin page *Navigations*:
 
 * **Levels**: `title` is the list of tracks and ends the chain. Tags: `title artist album albumArtist genre year composer`;
   **virtual tags** computed from the file (nothing stored): `type` (`analog` = recorded audio, `digital` = MIDI / ABC),
-  `format` (`MP3`, `FLAC`, `MIDI`, ...), `bitrate` (`n/a` for MIDI/ABC, `lossless`, `under 128 kbps`, `128 kbps`,
-  `160-224 kbps`, `256 kbps`, `320 kbps`); and the configured `extraTags`. Missing values go to "Unknown <tag>". An `artist`,
+  `format` (`MP3`, `FLAC`, `MIDI`, ...), `bitrate` (`n/a` for MIDI/ABC, `lossless`, `under 128 kbps`, `128 kbps` (128-191),
+  `192 kbps`, `256 kbps`, `320 kbps`, listed best first); and the configured `extraTags`. Missing values go to "Unknown <tag>". An `artist`,
   `albumArtist` or `composer` level followed by `album` gets an "All tracks" entry; albums are told apart by
   (album artist, album title), multi-value artists / genres / composers list a track under each value.
 * **Ranges**: a level (or track list) with more entries than `subitems` is split into at most `ranges` containers.

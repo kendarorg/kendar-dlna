@@ -79,7 +79,7 @@ are rooted, so for a local run set them explicitly (or pass `-Dkendar.dataDir`).
 | `transcode.enabled` | bool | true | - | false: originals only, MIDI unavailable, cue sheets and chapters ignored (files stay whole) |
 | `transcode.bitrateKbps` | int | 320 | one of 32 40 48 56 64 80 96 112 128 160 192 224 256 320 | MP3 CBR bitrate (default for profiles with `bitrateKbps: 0`) |
 | `transcode.prefetch` | bool | true | - | Encode the next track ahead |
-| `transcode.prefetchJobs` | int | 1 | 1 or 2 | Size of the low-priority prefetch pool |
+| `transcode.prefetchJobs` | int | 10 | 1 to 16 | Size of the low-priority prefetch pool |
 | `transcode.cacheMaxMb` | int | 2048 | >= 16 | Size cap of `<dataDir>/transcode` |
 | `transcode.cacheTtlHours` | int | 336 | >= 1 | Entries unused for this long are dropped |
 | `transcode.soundFontPath` | string or null | null (bundled) | blank = null; if not a file: warning and bundled one is used | SF2 file for MIDI |

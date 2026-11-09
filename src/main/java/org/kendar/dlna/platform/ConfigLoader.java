@@ -160,8 +160,8 @@ public final class ConfigLoader {
             throw new ConfigException("transcode.bitrateKbps must be one of "
                     + org.kendar.dlna.clients.ClientProfile.BITRATES + ", got " + tc.bitrateKbps());
         }
-        if (tc.prefetchJobs() < 1 || tc.prefetchJobs() > 2) {
-            throw new ConfigException("transcode.prefetchJobs must be 1 or 2");
+        if (tc.prefetchJobs() < 1 || tc.prefetchJobs() > 16) {
+            throw new ConfigException("transcode.prefetchJobs must be between 1 and 16");
         }
         if (tc.cacheMaxMb() < 16) {
             throw new ConfigException("transcode.cacheMaxMb must be at least 16");

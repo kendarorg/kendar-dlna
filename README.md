@@ -404,7 +404,7 @@ as `/music`) are used as written. Command-line overrides (`-Dkendar.dataDir=...`
 | `scan.catchUpThresholdHours` | 12 | after a fast start, scan in the background if the last scan is older |
 | `transcode.enabled` | true | false: originals only (MIDI then unavailable) |
 | `transcode.bitrateKbps` | 320 | MP3 CBR rate: 32 40 48 56 64 80 96 112 128 160 192 224 256 320 |
-| `transcode.prefetch` / `prefetchJobs` | true / 1 | encode the next track ahead (pool of 1 or 2) |
+| `transcode.prefetch` / `prefetchJobs` | true / 10 | encode the next track ahead (pool of 1 to 16) |
 | `transcode.cacheMaxMb` / `cacheTtlHours` | 2048 / 336 | transcode cache size cap and idle lifetime |
 | `transcode.soundFontPath` | `null` (bundled) | SF2 file for MIDI |
 | `transcode.midiSilenceThreshold` | 16 | 16-bit amplitude regarded as silence when trimming the MIDI tail (0-2000) |

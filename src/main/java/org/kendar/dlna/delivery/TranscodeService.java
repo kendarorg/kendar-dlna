@@ -35,6 +35,8 @@ public final class TranscodeService implements PrefetchTarget {
     private static final String PIPELINE = "v2";
     private static final int MIDI_RATE = 48_000;
     private static final int MEMO_LIMIT = 20_000;
+    /** How long a request waits for a prefetch of the same track already encoding, rather than encoding twice. */
+    private static final java.time.Duration PREFETCH_WAIT = java.time.Duration.ofSeconds(20);
 
     /** Sample rate and exact frame count of a source. */
     public record SourceLength(int sampleRate, long samples) {
@@ -48,6 +50,7 @@ public final class TranscodeService implements PrefetchTarget {
     private final int defaultMaxRate;
     private final String midiStamp;
     private final RenderedLengthSink sink;
+    private final Map<String, Object> probeLocks = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, SourceLength> memo = Collections.synchronizedMap(
             new LinkedHashMap<>(256, 0.75f, true) {
                 private static final long serialVersionUID = 1L;
@@ -187,10 +190,16 @@ public final class TranscodeService implements PrefetchTarget {
         if (known.isPresent()) {
             return known.get();
         }
-        Transcoder.SourceInfo info = transcoder.probe(sourceFormat(t.format()), file);
-        SourceLength len = new SourceLength(info.sampleRate(), info.totalSamples());
-        memo.put(memoKey(t), len);
-        return len;
+        synchronized (probeLocks.computeIfAbsent(memoKey(t), k -> new Object())) {
+            known = knownSource(t);   // another request may have probed it while this one waited
+            if (known.isPresent()) {
+                return known.get();
+            }
+            Transcoder.SourceInfo info = transcoder.probe(sourceFormat(t.format()), file);
+            SourceLength len = new SourceLength(info.sampleRate(), info.totalSamples());
+            memo.put(memoKey(t), len);
+            return len;
+        }
     }
 
     private static String memoKey(Track t) {
@@ -248,7 +257,8 @@ public final class TranscodeService implements PrefetchTarget {
         SourceLength src = sourceOf(t, file);
         long length = lengthOf(src, v);
         String mime = mimeOf(v, src.sampleRate());
-        Optional<Path> hit = cache.get(key);
+        // a prefetch of the same track already encoding is waited for rather than encoded a second time
+        Optional<Path> hit = cache.getWaiting(key, PREFETCH_WAIT);
         if (hit.isPresent()) {
             if (Files.size(hit.get()) == length) {
                 return new StreamBody.FileBody(hit.get(), length, mime, featuresOf(v));

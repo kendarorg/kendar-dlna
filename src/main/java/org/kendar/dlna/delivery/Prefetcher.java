@@ -103,7 +103,7 @@ public final class Prefetcher implements AutoCloseable {
         if (v == null) {
             return;
         }
-        schedule(jobKey, n, v);
+        schedule(jobKey, n, v, current.id());
     }
 
     /**
@@ -113,10 +113,14 @@ public final class Prefetcher implements AutoCloseable {
      * @return true when the form is being (or about to be) produced, false when nothing needs to be done
      */
     public boolean hint(String jobKey, Track track, StreamVariant variant) {
-        return schedule(jobKey, track, variant);
+        return schedule(jobKey, track, variant, null);
     }
 
-    private boolean schedule(String jobKey, Track n, StreamVariant v) {
+    /**
+     * @param playingId the item the client is streaming now; a pending job for it is left to finish (the client is
+     *                  likely waiting on that very encode) instead of being cancelled by the next hint
+     */
+    private boolean schedule(String jobKey, Track n, StreamVariant v, String playingId) {
         if (!target.needsPrefetch(n, v)) {
             return false;
         }
@@ -130,7 +134,11 @@ public final class Prefetcher implements AutoCloseable {
         }
         Job existing = jobs.get(jobKey);
         if (existing != null) {
-            cancel(jobKey, existing);
+            if (existing.trackId().equals(playingId)) {
+                jobs.remove(jobKey, existing);   // keep running, just no longer tracked for cancellation
+            } else {
+                cancel(jobKey, existing);
+            }
         }
         State state = new State(dedupe);
         running.incrementAndGet();

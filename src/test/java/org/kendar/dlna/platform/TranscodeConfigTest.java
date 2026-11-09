@@ -34,7 +34,7 @@ class TranscodeConfigTest {
         assertThat(t.enabled()).isTrue();
         assertThat(t.bitrateKbps()).isEqualTo(320);
         assertThat(t.prefetch()).isTrue();
-        assertThat(t.prefetchJobs()).isEqualTo(1);
+        assertThat(t.prefetchJobs()).isEqualTo(10);
         assertThat(t.cacheMaxMb()).isEqualTo(AppConfig.DEFAULT_CACHE_MB);
         assertThat(t.cacheTtlHours()).isEqualTo(AppConfig.DEFAULT_CACHE_TTL_HOURS);
         assertThat(t.soundFontPath()).isNull();
@@ -124,7 +124,7 @@ class TranscodeConfigTest {
     void invalidValuesFailFastWithAClearMessage() {
         assertThatThrownBy(() -> load("{\"transcode\":{\"bitrateKbps\":300}}"))
                 .isInstanceOf(ConfigLoader.ConfigException.class).hasMessageContaining("transcode.bitrateKbps");
-        assertThatThrownBy(() -> load("{\"transcode\":{\"prefetchJobs\":5}}"))
+        assertThatThrownBy(() -> load("{\"transcode\":{\"prefetchJobs\":17}}"))
                 .hasMessageContaining("transcode.prefetchJobs");
         assertThatThrownBy(() -> load("{\"transcode\":{\"cacheMaxMb\":1}}"))
                 .hasMessageContaining("transcode.cacheMaxMb");

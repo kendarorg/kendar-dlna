@@ -193,6 +193,30 @@ public final class TranscodeCache {
      * The cached file of a key, produced first when missing. Concurrent callers for one key wait for a single
      * producer. A failed or cancelled production leaves nothing behind.
      */
+    /**
+     * The entry for {@code key}; when it is being produced right now (e.g. by a prefetch), waits up to
+     * {@code timeout} for that production to end instead of letting the caller encode it a second time.
+     */
+    public Optional<Path> getWaiting(String key, Duration timeout) {
+        Optional<Path> hit = get(key);
+        if (hit.isPresent()) {
+            return hit;
+        }
+        ReentrantLock lock = locks.get(key);
+        if (lock == null) {
+            return Optional.empty();
+        }
+        try {
+            if (lock.tryLock(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                lock.unlock();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+        return get(key);
+    }
+
     public Path getOrCreate(String key, Source source, Producer producer, BooleanSupplier cancelled)
             throws IOException {
         Optional<Path> hit = get(key);

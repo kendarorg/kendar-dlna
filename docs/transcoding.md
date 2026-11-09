@@ -154,7 +154,7 @@ read-only. FLAC and ALAC output need ffmpeg too.
     "enabled": true,
     "bitrateKbps": 320,
     "prefetch": true,
-    "prefetchJobs": 1,
+    "prefetchJobs": 10,
     "cacheMaxMb": 2048,
     "cacheTtlHours": 336,
     "soundFontPath": "/data/GeneralUser-GS.sf2",

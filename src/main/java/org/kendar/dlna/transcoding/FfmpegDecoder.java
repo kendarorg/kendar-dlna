@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -27,6 +31,55 @@ final class FfmpegDecoder extends FixedLengthDecoder {
     private static final int MAX_CACHED = 20_000;
     private static final Pattern HZ = Pattern.compile("(\\d{4,8}) Hz");
     private static final Map<String, Info> INFOS = new ConcurrentHashMap<>();
+    private static final Map<String, Object> PROBE_LOCKS = new ConcurrentHashMap<>();
+
+    /** An ffmpeg that produces nothing for this long is killed, so its reader fails instead of waiting forever. */
+    static final long STALL_SECONDS = 30;
+    private static final ScheduledExecutorService WATCHDOG = java.util.concurrent.Executors
+            .newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "ffmpeg-watchdog");
+                t.setDaemon(true);
+                return t;
+            });
+
+    /** Kills the process unless closed within {@link #STALL_SECONDS}; one guard per blocking read. */
+    private static final class Guard implements AutoCloseable {
+        private final AtomicBoolean fired = new AtomicBoolean();
+        private final ScheduledFuture<?> task;
+
+        Guard(Process p) {
+            task = WATCHDOG.schedule(() -> {
+                fired.set(true);
+                p.destroyForcibly();
+            }, STALL_SECONDS, TimeUnit.SECONDS);
+        }
+
+        void check() throws IOException {
+            if (fired.get()) {
+                throw new IOException("ffmpeg stalled: no output for " + STALL_SECONDS + " s");
+            }
+        }
+
+        @Override
+        public void close() {
+            task.cancel(false);
+        }
+    }
+
+    /** One read of the process output that cannot block longer than the stall limit. */
+    private static int guardedRead(Process p, InputStream in, byte[] buf, int off, int len) throws IOException {
+        try (Guard g = new Guard(p)) {
+            int n;
+            try {
+                n = in.read(buf, off, len);
+            } catch (IOException e) {
+                g.check();
+                throw e;
+            }
+            g.check();
+            return n;
+        }
+    }
 
     private final Path file;
     private final int rate;
@@ -74,7 +127,7 @@ final class FfmpegDecoder extends FixedLengthDecoder {
         if (out == null) {
             start(0);
         }
-        return out.read(buf, off, len);
+        return guardedRead(process, out, buf, off, len);
     }
 
     @Override
@@ -104,13 +157,24 @@ final class FfmpegDecoder extends FixedLengthDecoder {
         if (known != null) {
             return known;
         }
+        // one probe per file: concurrent opens (prefetch, retries, other clients) wait for it
+        synchronized (PROBE_LOCKS.computeIfAbsent(key, k -> new Object())) {
+            known = INFOS.get(key);
+            if (known != null) {
+                return known;
+            }
+            return probe(file, key);
+        }
+    }
+
+    private static Info probe(Path file, String key) throws IOException {
         int rate = sampleRate(file);
         long bytes = 0;
         Process p = decodeProcess(file, 0, rate, false);
         try (InputStream in = p.getInputStream()) {
             byte[] buf = new byte[256 * 1024];
             int n;
-            while ((n = in.read(buf)) >= 0) {
+            while ((n = guardedRead(p, in, buf, 0, buf.length)) >= 0) {
                 bytes += n;
             }
         } finally {
@@ -133,8 +197,18 @@ final class FfmpegDecoder extends FixedLengthDecoder {
         Process p = new ProcessBuilder(Ffmpeg.binary(), "-nostdin", "-hide_banner", "-i", file.toString())
                 .redirectErrorStream(true).start();
         p.getOutputStream().close();
-        String text = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        p.destroyForcibly();
+        String text;
+        try (Guard g = new Guard(p)) {
+            try {
+                text = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                g.check();
+                throw e;
+            }
+            g.check();
+        } finally {
+            p.destroyForcibly();
+        }
         for (String line : text.split("\\R")) {
             if (line.contains("Audio:")) {
                 Matcher m = HZ.matcher(line);

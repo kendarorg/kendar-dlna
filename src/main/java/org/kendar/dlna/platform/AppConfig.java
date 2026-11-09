@@ -214,7 +214,7 @@ public record AppConfig(Library library, Network network, Server server, Random 
             enabled = enabled == null ? Boolean.TRUE : enabled;
             bitrateKbps = bitrateKbps == null ? DEFAULT_MP3_BITRATE : bitrateKbps;
             prefetch = prefetch == null ? Boolean.TRUE : prefetch;
-            prefetchJobs = prefetchJobs == null ? 1 : prefetchJobs;
+            prefetchJobs = prefetchJobs == null ? 10 : prefetchJobs;
             cacheMaxMb = cacheMaxMb == null ? DEFAULT_CACHE_MB : cacheMaxMb;
             cacheTtlHours = cacheTtlHours == null ? DEFAULT_CACHE_TTL_HOURS : cacheTtlHours;
             soundFontPath = soundFontPath == null || soundFontPath.isBlank() ? null : soundFontPath.strip();

@@ -413,7 +413,7 @@ Tag edit limits: Opus and raw `.aac` are read-only. MIDI accepts title, artist (
   view; no wrap-around), item N+1 is encoded into the cache if it needs transcoding and is not cached. It uses the form
   the client is playing (MP3 bitrate or LPCM); a client playing natively gets no prefetch, except that a MIDI file
   after a natively played item is rendered to the default MP3. One job per client and context; cancelled when the
-  client starts a different item; runs on a low-priority pool of `transcode.prefetchJobs` (1 or 2) threads. Client
+  client starts a different item; runs on a low-priority pool of `transcode.prefetchJobs` (default 10, max 16) threads. Client
   queues are ignored.
 * Disabling (`transcode.enabled=false`): only originals are offered, MIDI becomes unsupported.
 * The Admin page shows cache entries/size and running prefetch jobs.
